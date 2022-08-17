@@ -5,16 +5,17 @@
 package dwarf_test
 
 import (
-	. "debug/dwarf"
 	"io"
 	"strings"
 	"testing"
+
+	. "github.com/blacktop/go-dwarf"
 )
 
 var (
-	file1C = &LineFile{Name: "/home/austin/go.dev/src/debug/dwarf/testdata/line1.c"}
-	file1H = &LineFile{Name: "/home/austin/go.dev/src/debug/dwarf/testdata/line1.h"}
-	file2C = &LineFile{Name: "/home/austin/go.dev/src/debug/dwarf/testdata/line2.c"}
+	file1C = &LineFile{Name: "./testdata/line1.c"}
+	file1H = &LineFile{Name: "./testdata/line1.h"}
+	file2C = &LineFile{Name: "./testdata/line2.c"}
 )
 
 func TestLineELFGCC(t *testing.T) {

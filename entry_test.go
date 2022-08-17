@@ -5,15 +5,16 @@
 package dwarf_test
 
 import (
-	. "debug/dwarf"
 	"encoding/binary"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	. "github.com/blacktop/go-dwarf"
 )
 
 func TestSplit(t *testing.T) {
-	// debug/dwarf doesn't (currently) support split DWARF, but
+	// github.com/blacktop/go-dwarf doesn't (currently) support split DWARF, but
 	// the attributes that pointed to the split DWARF used to
 	// cause loading the DWARF data to fail entirely (issue
 	// #12592). Test that we can at least read the DWARF data.

@@ -5,13 +5,14 @@
 package dwarf_test
 
 import (
-	. "debug/dwarf"
 	"debug/elf"
 	"debug/macho"
 	"debug/pe"
 	"fmt"
 	"strconv"
 	"testing"
+
+	. "github.com/blacktop/go-dwarf"
 )
 
 var typedefTests = map[string]string{
