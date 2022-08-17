@@ -10,7 +10,7 @@
 
 This package goes beyond the Go's `debug/dwarf` to:
 
-- Add support for HASH tables
+- Add support for apple HASH tables
 - Add convinience methods for reading/displaying DWARF data
 
 ## Install
