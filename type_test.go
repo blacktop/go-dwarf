@@ -6,12 +6,12 @@ package dwarf_test
 
 import (
 	"debug/elf"
+	"debug/macho"
 	"debug/pe"
 	"fmt"
 	"strconv"
 	"testing"
-
-	"github.com/blacktop/go-macho"
+	"unsafe"
 
 	. "github.com/blacktop/go-dwarf"
 )
@@ -56,7 +56,8 @@ func elfData(t *testing.T, name string) *Data {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return d
+	dd := *(*Data)(unsafe.Pointer(d))
+	return &dd
 }
 
 func machoData(t *testing.T, name string) *Data {
@@ -69,7 +70,8 @@ func machoData(t *testing.T, name string) *Data {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return d
+	dd := *(*Data)(unsafe.Pointer(d))
+	return &dd
 }
 
 func peData(t *testing.T, name string) *Data {
@@ -82,7 +84,8 @@ func peData(t *testing.T, name string) *Data {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return d
+	dd := *(*Data)(unsafe.Pointer(d))
+	return &dd
 }
 
 func TestTypedefsELF(t *testing.T) {
