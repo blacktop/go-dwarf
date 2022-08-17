@@ -6,11 +6,12 @@ package dwarf_test
 
 import (
 	"debug/elf"
-	"debug/macho"
 	"debug/pe"
 	"fmt"
 	"strconv"
 	"testing"
+
+	"github.com/blacktop/go-macho"
 
 	. "github.com/blacktop/go-dwarf"
 )
