@@ -13,3 +13,8 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+.vscode
+changelog.yml
+.chglog.yml
+__debug_bin
