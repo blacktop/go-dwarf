@@ -37,6 +37,7 @@ type Data struct {
 	order       binary.ByteOrder
 	typeCache   map[Offset]Type
 	typeSigs    map[uint64]*typeUnit
+	hashes      map[string]*Hash
 	unit        []unit
 }
 
@@ -63,6 +64,7 @@ func New(abbrev, aranges, frame, info, line, pubnames, ranges, str []byte) (*Dat
 		abbrevCache: make(map[uint64]abbrevTable),
 		typeCache:   make(map[Offset]Type),
 		typeSigs:    make(map[uint64]*typeUnit),
+		hashes:      make(map[string]*Hash),
 	}
 
 	// Sniff .debug_info to figure out byte order.
@@ -127,4 +129,8 @@ func (d *Data) AddSection(name string, contents []byte) error {
 	}
 	// Just ignore names that we don't yet support.
 	return err
+}
+
+func (d *Data) AddHashes(name string, contents []byte) error {
+	return d.parseHashes(name, contents)
 }

@@ -136,6 +136,69 @@ const (
 	AttrDeleted              Attr = 0x8A
 	AttrDefaulted            Attr = 0x8B
 	AttrLoclistsBase         Attr = 0x8C
+	// GNU extensions
+	AttrSfNames                    Attr = 0x2101
+	AttrSrcInfo                    Attr = 0x2102
+	AttrMacInfo                    Attr = 0x2103
+	AttrSrcCoords                  Attr = 0x2104
+	AttrBodyBegin                  Attr = 0x2105
+	AttrBodyEnd                    Attr = 0x2106
+	AttrGnuVector                  Attr = 0x2107
+	AttrGnuGuardedBy               Attr = 0x2108
+	AttrGnuPtGuardedBy             Attr = 0x2109
+	AttrGnuGuarded                 Attr = 0x210a
+	AttrGnuPtGuarded               Attr = 0x210b
+	AttrGnuLocksExcluded           Attr = 0x210c
+	AttrGnuExclusiveLocksRequired  Attr = 0x210d
+	AttrGnuSharedLocksRequired     Attr = 0x210e
+	AttrGnuOdrSignature            Attr = 0x210f
+	AttrGnuTemplateName            Attr = 0x2110
+	AttrGnuCallSiteValue           Attr = 0x2111
+	AttrGnuCallSiteDataValue       Attr = 0x2112
+	AttrGnuCallSiteTarget          Attr = 0x2113
+	AttrGnuCallSiteTargetClobbered Attr = 0x2114
+	AttrGnuTailCall                Attr = 0x2115
+	AttrGnuAllTailCallSites        Attr = 0x2116
+	AttrGnuAllCallSites            Attr = 0x2117
+	AttrGnuAllSourceCallSites      Attr = 0x2118
+	AttrGnuMacros                  Attr = 0x2119
+	// Extensions for Fission proposal.
+	AttrGnuDwoName       Attr = 0x2130
+	AttrGnuDwoId         Attr = 0x2131
+	AttrGnuRangesBase    Attr = 0x2132
+	AttrGnuAddrBase      Attr = 0x2133
+	AttrGnuPubnames      Attr = 0x2134
+	AttrGnuPubtypes      Attr = 0x2135
+	AttrGnuDiscriminator Attr = 0x2136
+	AttrGnuLocviews      Attr = 0x2137
+	AttrGnuEntryView     Attr = 0x2138
+	// LLVM project extensions.
+	AttrLlvmIncludePath                    Attr = 0x3e00
+	AttrLlvmConfigMacros                   Attr = 0x3e01
+	AttrLlvmSysroot                        Attr = 0x3e02
+	AttrLlvmTagOffset                      Attr = 0x3e03
+	AttrLlvmPtrauthKey                     Attr = 0x3e04
+	AttrLlvmPtrauthAddressDiscriminated    Attr = 0x3e05
+	AttrLlvmPtrauthExtraDiscriminator      Attr = 0x3e06
+	AttrLlvmApiNotes                       Attr = 0x3e07
+	AttrLlvmPtrauthIsaPointer              Attr = 0x3e08
+	AttrLlvmPtrauthAuthenticatesNullValues Attr = 0x3e09
+	// Apple extensions.
+	AttrAppleOptimized           Attr = 0x3fe1
+	AttrAppleFlags               Attr = 0x3fe2
+	AttrAppleIsa                 Attr = 0x3fe3
+	AttrAppleBlock               Attr = 0x3fe4
+	AttrAppleMajorRuntimeVersion Attr = 0x3fe5
+	AttrAppleRuntimeClass        Attr = 0x3fe6
+	AttrAppleOmitFramePtr        Attr = 0x3fe7
+	AttrApplePropertyName        Attr = 0x3fe8
+	AttrApplePropertyGetter      Attr = 0x3fe9
+	AttrApplePropertySetter      Attr = 0x3fea
+	AttrApplePropertyAttribute   Attr = 0x3feb
+	AttrAppleObjcCompleteType    Attr = 0x3fec
+	AttrAppleProperty            Attr = 0x3fed
+	AttrAppleObjcDirect          Attr = 0x3fee
+	AttrAppleSDK                 Attr = 0x3fef
 )
 
 func (a Attr) GoString() string {
@@ -199,6 +262,8 @@ const (
 	// http://www.dwarfstd.org/ShowIssue.php?issue=120604.1
 	formGnuRefAlt  format = 0x1f20
 	formGnuStrpAlt format = 0x1f21
+	// LLVM addr+offset extension
+	formLlvmAddrxOffset format = 0x2001
 )
 
 //go:generate stringer -type Tag -trimprefix=Tag
@@ -279,6 +344,36 @@ const (
 	TagCallSiteParameter Tag = 0x49
 	TagSkeletonUnit      Tag = 0x4A
 	TagImmutableType     Tag = 0x4B
+	// GNU
+	TagFormatLabel              Tag = 0x4101
+	TagFunctionTemplate         Tag = 0x4102
+	TagClassTemplate            Tag = 0x4103
+	TagGnuBincl                 Tag = 0x4104
+	TagGnuEincl                 Tag = 0x4105
+	TagGnuTemplateTemplateParam Tag = 0x4106
+	TagGnuTemplateParameterPack Tag = 0x4107
+	TagGnuFormalParameterPack   Tag = 0x4108
+	TagGnuCallSite              Tag = 0x4109
+	TagGnuCallSiteParameter     Tag = 0x410a
+	// Apple
+	TagAppleProperty Tag = 0x4200
+	// Sun
+	TagSunFunctionTemplate    Tag = 0x4201
+	TagSunClassTemplate       Tag = 0x4202
+	TagSunStructTemplate      Tag = 0x4203
+	TagSunUnionTemplate       Tag = 0x4204
+	TagSunIndirectInheritance Tag = 0x4205
+	TagSunCodeflags           Tag = 0x4206
+	TagSunMemopInfo           Tag = 0x4207
+	TagSunOmpChildFunc        Tag = 0x4208
+	TagSunRttiDescriptor      Tag = 0x4209
+	TagSunDtorInfo            Tag = 0x420a
+	TagSunDtor                Tag = 0x420b
+	TagSunF90Interface        Tag = 0x420c
+	TagSunFortranVaxStructure Tag = 0x420d
+	// LLVM
+	TagPtrauthType Tag = 0x4300
+	TagAnnotation  Tag = 0x6000
 )
 
 func (t Tag) GoString() string {
@@ -472,4 +567,61 @@ const (
 	rleBaseAddress  = 0x5
 	rleStartEnd     = 0x6
 	rleStartLength  = 0x7
+)
+
+// A lang is the constants used in the `DW_AT_language` attribute.
+type lang uint32
+
+const (
+	C89                lang = 0x0001
+	C                  lang = 0x0002
+	Ada83              lang = 0x0003
+	CPlusPlus          lang = 0x0004
+	Cobol74            lang = 0x0005
+	Cobol85            lang = 0x0006
+	Fortran77          lang = 0x0007
+	Fortran90          lang = 0x0008
+	Pascal83           lang = 0x0009
+	Modula2            lang = 0x000a
+	Java               lang = 0x000b
+	C99                lang = 0x000c
+	Ada95              lang = 0x000d
+	Fortran95          lang = 0x000e
+	Pli                lang = 0x000f
+	ObjC               lang = 0x0010
+	ObjCPlusPlus       lang = 0x0011
+	Upc                lang = 0x0012
+	D                  lang = 0x0013
+	Python             lang = 0x0014
+	OpenCl             lang = 0x0015
+	Go                 lang = 0x0016
+	Modula3            lang = 0x0017
+	Haskell            lang = 0x0018
+	CPlusPlus_03       lang = 0x0019
+	CPlusPlus_11       lang = 0x001a
+	OCaml              lang = 0x001b
+	Rust               lang = 0x001c
+	C11                lang = 0x001d
+	Swift              lang = 0x001e
+	Julia              lang = 0x001f
+	Dylan              lang = 0x0020
+	CPlusPlus_14       lang = 0x0021
+	Fortran03          lang = 0x0022
+	Fortran08          lang = 0x0023
+	RenderScript       lang = 0x0024
+	Bliss              lang = 0x0025
+	Kotlin             lang = 0x0026
+	Zig                lang = 0x0027
+	Crystal            lang = 0x0028
+	CPlusPlus_17       lang = 0x002a
+	CPlusPlus_20       lang = 0x002b
+	C17                lang = 0x002c
+	Fortran18          lang = 0x002d
+	Ada2005            lang = 0x002e
+	Ada2012            lang = 0x002f
+	MipsAssembler      lang = 0x8001
+	GoogleRenderScript lang = 0x8e57
+	SunAssembler       lang = 0x9001
+	AltiumAssembler    lang = 0x9101
+	BorlandDelphi      lang = 0xb000
 )

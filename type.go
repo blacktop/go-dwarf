@@ -8,13 +8,17 @@
 
 package dwarf
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
 
 // A Type conventionally represents a pointer to any of the
 // specific Type structures (CharType, StructType, etc.).
 type Type interface {
 	Common() *CommonType
 	String() string
+	Format(string) string
 	Size() int64
 }
 
@@ -29,6 +33,8 @@ type CommonType struct {
 func (c *CommonType) Common() *CommonType { return c }
 
 func (c *CommonType) Size() int64 { return c.ByteSize }
+
+func (c *CommonType) Format(name string) string { return name }
 
 // Basic types
 
@@ -119,7 +125,11 @@ type ArrayType struct {
 }
 
 func (t *ArrayType) String() string {
-	return "[" + strconv.FormatInt(t.Count, 10) + "]" + t.Type.String()
+	return t.Type.String() + " [" + strconv.FormatInt(t.Count, 10) + "]"
+}
+
+func (t *ArrayType) Format(name string) string {
+	return fmt.Sprintf("%s %s[%d]", t.Type.String(), name, t.Count)
 }
 
 func (t *ArrayType) Size() int64 {
@@ -142,7 +152,7 @@ type PtrType struct {
 	Type Type
 }
 
-func (t *PtrType) String() string { return "*" + t.Type.String() }
+func (t *PtrType) String() string { return t.Type.String() + "*" }
 
 // A StructType represents a struct, union, or C++ class type.
 type StructType struct {
@@ -259,19 +269,25 @@ func (t *StructType) Defn() string {
 		s += " /*incomplete*/"
 		return s
 	}
-	s += " {"
+	s += " {\n"
+	var prevOffset string
 	for i, f := range t.Field {
 		if i > 0 {
-			s += "; "
+			s += fmt.Sprintf(";\t%s\n", prevOffset)
 		}
-		s += f.Name + " " + f.Type.String()
-		s += "@" + strconv.FormatInt(f.ByteOffset, 10)
+		prevOffset = fmt.Sprintf("// @ %#x", f.ByteOffset)
+		switch f.Type.(type) {
+		case *ArrayType:
+			s += f.Type.Format(f.Name)
+		default:
+			s += f.Type.String() + " " + f.Name
+		}
 		if f.BitSize > 0 {
 			s += " : " + strconv.FormatInt(f.BitSize, 10)
 			s += "@" + strconv.FormatInt(f.bitOffset(), 10)
 		}
 	}
-	s += "}"
+	s += fmt.Sprintf(";\t%s\n}\n", prevOffset)
 	return s
 }
 
@@ -344,6 +360,26 @@ type TypedefType struct {
 func (t *TypedefType) String() string { return t.Name }
 
 func (t *TypedefType) Size() int64 { return t.Type.Size() }
+
+// A PtrauthType represents a LLVM ptrauth type.
+type PtrauthType struct {
+	CommonType
+	Key           int64
+	Discriminated bool
+	Discriminator int64
+}
+
+func (t *PtrauthType) GetKey() string {
+	keyNames := []string{"IA", "IB", "DA", "DB"}
+	if t.Key < 0 || t.Key >= int64(len(keyNames)) {
+		return fmt.Sprintf("%d", t.Key)
+	}
+	return keyNames[t.Key]
+}
+
+func (t *PtrauthType) String() string {
+	return fmt.Sprintf("__ptrauth(%s, %t, %x)", t.GetKey(), t.Discriminated, t.Discriminator)
+}
 
 // An UnsupportedType is a placeholder returned in situations where we
 // encounter a type that isn't supported.
@@ -816,6 +852,18 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		typ = t
 		typeCache[off] = t
 		t.Name, _ = e.Val(AttrName).(string)
+
+	case TagPtrauthType:
+		// Ptrauth type (DWARF v??)
+		// Attributes:
+		//	AttrName: name
+		t := new(PtrauthType)
+		typ = t
+		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
+		t.Key, _ = e.Val(AttrLlvmPtrauthKey).(int64)
+		t.Discriminated, _ = e.Val(AttrLlvmPtrauthAddressDiscriminated).(bool)
+		t.Discriminator, _ = e.Val(AttrLlvmPtrauthExtraDiscriminator).(int64)
 
 	default:
 		// This is some other type DIE that we're currently not
