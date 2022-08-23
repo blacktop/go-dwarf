@@ -10,6 +10,7 @@ package dwarf
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 // Data represents the DWARF debugging information
@@ -133,4 +134,68 @@ func (d *Data) AddSection(name string, contents []byte) error {
 
 func (d *Data) AddHashes(name string, contents []byte) error {
 	return d.parseHashes(name, contents)
+}
+
+func (d *Data) LookupType(name string) (Offset, error) {
+	thash, ok := d.hashes["types"]
+	if !ok {
+		return 0, fmt.Errorf("failed to find '__DWARF.__apple_types' hash data")
+	}
+	return thash.lookup(name)
+}
+
+func (d *Data) DumpTypes() (Entries, error) {
+	thash, ok := d.hashes["types"]
+	if !ok {
+		return nil, fmt.Errorf("failed to find '__DWARF.__apple_types' hash data")
+	}
+	return thash.dump()
+}
+
+func (d *Data) LookupName(name string) (Offset, error) {
+	thash, ok := d.hashes["names"]
+	if !ok {
+		return 0, fmt.Errorf("failed to find '__DWARF.__apple_names' hash data")
+	}
+	return thash.lookup(name)
+}
+
+func (d *Data) DumpNames() (Entries, error) {
+	thash, ok := d.hashes["names"]
+	if !ok {
+		return nil, fmt.Errorf("failed to find '__DWARF.__apple_names' hash data")
+	}
+	return thash.dump()
+}
+
+func (d *Data) LookupNamespace(name string) (Offset, error) {
+	thash, ok := d.hashes["namespac"]
+	if !ok {
+		return 0, fmt.Errorf("failed to find '__DWARF.__apple_namespac' hash data")
+	}
+	return thash.lookup(name)
+}
+
+func (d *Data) DumpNamespaces() (Entries, error) {
+	thash, ok := d.hashes["namespac"]
+	if !ok {
+		return nil, fmt.Errorf("failed to find '__DWARF.__apple_namespac' hash data")
+	}
+	return thash.dump()
+}
+
+func (d *Data) LookupObjC(name string) (Offset, error) {
+	thash, ok := d.hashes["objc"]
+	if !ok {
+		return 0, fmt.Errorf("failed to find '__DWARF.__apple_objc' hash data")
+	}
+	return thash.lookup(name)
+}
+
+func (d *Data) DumpObjC() (Entries, error) {
+	thash, ok := d.hashes["objc"]
+	if !ok {
+		return nil, fmt.Errorf("failed to find '__DWARF.__apple_objc' hash data")
+	}
+	return thash.dump()
 }

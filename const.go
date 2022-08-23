@@ -209,7 +209,7 @@ func (a Attr) GoString() string {
 }
 
 // A format is a DWARF data encoding format.
-type format uint32
+type format uint16
 
 const (
 	// value formats
@@ -269,7 +269,7 @@ const (
 //go:generate stringer -type Tag -trimprefix=Tag
 
 // A Tag is the classification (the type) of an Entry.
-type Tag uint32
+type Tag uint16
 
 const (
 	TagArrayType              Tag = 0x01
@@ -569,59 +569,61 @@ const (
 	rleStartLength  = 0x7
 )
 
+//go:generate stringer -type lang -trimprefix=Lang
+
 // A lang is the constants used in the `DW_AT_language` attribute.
 type lang uint32
 
 const (
-	C89                lang = 0x0001
-	C                  lang = 0x0002
-	Ada83              lang = 0x0003
-	CPlusPlus          lang = 0x0004
-	Cobol74            lang = 0x0005
-	Cobol85            lang = 0x0006
-	Fortran77          lang = 0x0007
-	Fortran90          lang = 0x0008
-	Pascal83           lang = 0x0009
-	Modula2            lang = 0x000a
-	Java               lang = 0x000b
-	C99                lang = 0x000c
-	Ada95              lang = 0x000d
-	Fortran95          lang = 0x000e
-	Pli                lang = 0x000f
-	ObjC               lang = 0x0010
-	ObjCPlusPlus       lang = 0x0011
-	Upc                lang = 0x0012
-	D                  lang = 0x0013
-	Python             lang = 0x0014
-	OpenCl             lang = 0x0015
-	Go                 lang = 0x0016
-	Modula3            lang = 0x0017
-	Haskell            lang = 0x0018
-	CPlusPlus_03       lang = 0x0019
-	CPlusPlus_11       lang = 0x001a
-	OCaml              lang = 0x001b
-	Rust               lang = 0x001c
-	C11                lang = 0x001d
-	Swift              lang = 0x001e
-	Julia              lang = 0x001f
-	Dylan              lang = 0x0020
-	CPlusPlus_14       lang = 0x0021
-	Fortran03          lang = 0x0022
-	Fortran08          lang = 0x0023
-	RenderScript       lang = 0x0024
-	Bliss              lang = 0x0025
-	Kotlin             lang = 0x0026
-	Zig                lang = 0x0027
-	Crystal            lang = 0x0028
-	CPlusPlus_17       lang = 0x002a
-	CPlusPlus_20       lang = 0x002b
-	C17                lang = 0x002c
-	Fortran18          lang = 0x002d
-	Ada2005            lang = 0x002e
-	Ada2012            lang = 0x002f
-	MipsAssembler      lang = 0x8001
-	GoogleRenderScript lang = 0x8e57
-	SunAssembler       lang = 0x9001
-	AltiumAssembler    lang = 0x9101
-	BorlandDelphi      lang = 0xb000
+	LangC89                lang = 0x0001
+	LangC                  lang = 0x0002
+	LangAda83              lang = 0x0003
+	LangCPlusPlus          lang = 0x0004
+	LangCobol74            lang = 0x0005
+	LangCobol85            lang = 0x0006
+	LangFortran77          lang = 0x0007
+	LangFortran90          lang = 0x0008
+	LangPascal83           lang = 0x0009
+	LangModula2            lang = 0x000a
+	LangJava               lang = 0x000b
+	LangC99                lang = 0x000c
+	LangAda95              lang = 0x000d
+	LangFortran95          lang = 0x000e
+	LangPli                lang = 0x000f
+	LangObjC               lang = 0x0010
+	LangObjCPlusPlus       lang = 0x0011
+	LangUpc                lang = 0x0012
+	LangD                  lang = 0x0013
+	LangPython             lang = 0x0014
+	LangOpenCl             lang = 0x0015
+	LangGo                 lang = 0x0016
+	LangModula3            lang = 0x0017
+	LangHaskell            lang = 0x0018
+	LangCPlusPlus_03       lang = 0x0019
+	LangCPlusPlus_11       lang = 0x001a
+	LangOCaml              lang = 0x001b
+	LangRust               lang = 0x001c
+	LangC11                lang = 0x001d
+	LangSwift              lang = 0x001e
+	LangJulia              lang = 0x001f
+	LangDylan              lang = 0x0020
+	LangCPlusPlus_14       lang = 0x0021
+	LangFortran03          lang = 0x0022
+	LangFortran08          lang = 0x0023
+	LangRenderScript       lang = 0x0024
+	LangBliss              lang = 0x0025
+	LangKotlin             lang = 0x0026
+	LangZig                lang = 0x0027
+	LangCrystal            lang = 0x0028
+	LangCPlusPlus_17       lang = 0x002a
+	LangCPlusPlus_20       lang = 0x002b
+	LangC17                lang = 0x002c
+	LangFortran18          lang = 0x002d
+	LangAda2005            lang = 0x002e
+	LangAda2012            lang = 0x002f
+	LangMipsAssembler      lang = 0x8001
+	LangGoogleRenderScript lang = 0x8e57
+	LangSunAssembler       lang = 0x9001
+	LangAltiumAssembler    lang = 0x9101
+	LangBorlandDelphi      lang = 0xb000
 )

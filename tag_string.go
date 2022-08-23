@@ -77,6 +77,32 @@ func _() {
 	_ = x[TagCallSiteParameter-73]
 	_ = x[TagSkeletonUnit-74]
 	_ = x[TagImmutableType-75]
+	_ = x[TagFormatLabel-16641]
+	_ = x[TagFunctionTemplate-16642]
+	_ = x[TagClassTemplate-16643]
+	_ = x[TagGnuBincl-16644]
+	_ = x[TagGnuEincl-16645]
+	_ = x[TagGnuTemplateTemplateParam-16646]
+	_ = x[TagGnuTemplateParameterPack-16647]
+	_ = x[TagGnuFormalParameterPack-16648]
+	_ = x[TagGnuCallSite-16649]
+	_ = x[TagGnuCallSiteParameter-16650]
+	_ = x[TagAppleProperty-16896]
+	_ = x[TagSunFunctionTemplate-16897]
+	_ = x[TagSunClassTemplate-16898]
+	_ = x[TagSunStructTemplate-16899]
+	_ = x[TagSunUnionTemplate-16900]
+	_ = x[TagSunIndirectInheritance-16901]
+	_ = x[TagSunCodeflags-16902]
+	_ = x[TagSunMemopInfo-16903]
+	_ = x[TagSunOmpChildFunc-16904]
+	_ = x[TagSunRttiDescriptor-16905]
+	_ = x[TagSunDtorInfo-16906]
+	_ = x[TagSunDtor-16907]
+	_ = x[TagSunF90Interface-16908]
+	_ = x[TagSunFortranVaxStructure-16909]
+	_ = x[TagPtrauthType-17152]
+	_ = x[TagAnnotation-24576]
 }
 
 const (
@@ -86,6 +112,10 @@ const (
 	_Tag_name_3 = "Member"
 	_Tag_name_4 = "PointerTypeReferenceTypeCompileUnitStringTypeStructType"
 	_Tag_name_5 = "SubroutineTypeTypedefUnionTypeUnspecifiedParametersVariantCommonDwarfBlockCommonInclusionInheritanceInlinedSubroutineModulePtrToMemberTypeSetTypeSubrangeTypeWithStmtAccessDeclarationBaseTypeCatchDwarfBlockConstTypeConstantEnumeratorFileTypeFriendNamelistNamelistItemPackedTypeSubprogramTemplateTypeParameterTemplateValueParameterThrownTypeTryDwarfBlockVariantPartVariableVolatileTypeDwarfProcedureRestrictTypeInterfaceTypeNamespaceImportedModuleUnspecifiedTypePartialUnitImportedUnitMutableTypeConditionSharedTypeTypeUnitRvalueReferenceTypeTemplateAliasCoarrayTypeGenericSubrangeDynamicTypeAtomicTypeCallSiteCallSiteParameterSkeletonUnitImmutableType"
+	_Tag_name_6 = "FormatLabelFunctionTemplateClassTemplateGnuBinclGnuEinclGnuTemplateTemplateParamGnuTemplateParameterPackGnuFormalParameterPackGnuCallSiteGnuCallSiteParameter"
+	_Tag_name_7 = "ApplePropertySunFunctionTemplateSunClassTemplateSunStructTemplateSunUnionTemplateSunIndirectInheritanceSunCodeflagsSunMemopInfoSunOmpChildFuncSunRttiDescriptorSunDtorInfoSunDtorSunF90InterfaceSunFortranVaxStructure"
+	_Tag_name_8 = "PtrauthType"
+	_Tag_name_9 = "Annotation"
 )
 
 var (
@@ -93,6 +123,8 @@ var (
 	_Tag_index_2 = [...]uint8{0, 5, 18}
 	_Tag_index_4 = [...]uint8{0, 11, 24, 35, 45, 55}
 	_Tag_index_5 = [...]uint16{0, 14, 21, 30, 51, 58, 74, 89, 100, 117, 123, 138, 145, 157, 165, 182, 190, 205, 214, 222, 232, 240, 246, 254, 266, 276, 286, 307, 329, 339, 352, 363, 371, 383, 397, 409, 422, 431, 445, 460, 471, 483, 494, 503, 513, 521, 540, 553, 564, 579, 590, 600, 608, 625, 637, 650}
+	_Tag_index_6 = [...]uint8{0, 11, 27, 40, 48, 56, 80, 104, 126, 137, 157}
+	_Tag_index_7 = [...]uint8{0, 13, 32, 48, 65, 81, 103, 115, 127, 142, 159, 170, 177, 192, 214}
 )
 
 func (i Tag) String() string {
@@ -113,6 +145,16 @@ func (i Tag) String() string {
 	case 21 <= i && i <= 75:
 		i -= 21
 		return _Tag_name_5[_Tag_index_5[i]:_Tag_index_5[i+1]]
+	case 16641 <= i && i <= 16650:
+		i -= 16641
+		return _Tag_name_6[_Tag_index_6[i]:_Tag_index_6[i+1]]
+	case 16896 <= i && i <= 16909:
+		i -= 16896
+		return _Tag_name_7[_Tag_index_7[i]:_Tag_index_7[i+1]]
+	case i == 17152:
+		return _Tag_name_8
+	case i == 24576:
+		return _Tag_name_9
 	default:
 		return "Tag(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
