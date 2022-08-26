@@ -14,6 +14,8 @@ const (
 	anonymousNamespace = "(anonymous namespace)" // used for .apple_namespaces with DW_TAG_namespace DIEs with no name
 )
 
+//go:generate stringer -type atomType -trimprefix=AtomType
+
 type atomType uint16
 
 const (
@@ -30,10 +32,10 @@ const (
 	// info for a type when we know the fully qualified name.
 )
 
-type atomFlag uint8
+type AtomFlag uint8
 
 const (
-	FlagClassIsImplementation atomFlag = 1 << 1 // Always set for C++, only set for ObjC if this is the @implementation for class.
+	FlagClassIsImplementation AtomFlag = 1 << 1 // Always set for C++, only set for ObjC if this is the @implementation for class.
 )
 
 type hashFuncType uint16
@@ -80,10 +82,14 @@ type atoms struct {
 	Form format
 }
 
-type chunk struct {
+type Chunk struct {
 	StrOffset     uint32 // KeyType
 	HashDataCount uint32
-	HashData      []any // array of DIE offsets
+	HashData      [][]any // array of DIE offsets
+}
+
+func (c Chunk) GetFirstOffset() Offset {
+	return *c.HashData[0][0].(*Offset)
 }
 
 func (d *Data) parseHashes(name string, hashes []byte) error {
@@ -135,7 +141,7 @@ func (d *Data) parseHashes(name string, hashes []byte) error {
 	return nil
 }
 
-type Entries []chunk
+type Entries []Chunk
 
 type NameEntry struct {
 	Offset Offset
@@ -144,18 +150,20 @@ type NameEntry struct {
 type TypeEntry struct {
 	Offset       Offset
 	Tag          Tag
-	Flags        atomFlag
+	Flags        AtomFlag
 	QualNameHash uint32
 }
 
-func (h *Hash) lookup(name string) (Offset, error) {
+type QualNameHash uint32
+
+func (h *Hash) lookup(name string) (*Chunk, error) {
 
 	nameHash := djbHash([]byte(name))
 	bucketIndex := nameHash % h.BucketCount
 	hashIndex := h.Buckets[bucketIndex]
 
 	if hashIndex > h.HashesCount {
-		return 0, fmt.Errorf("hash index greater than hash count")
+		return nil, fmt.Errorf("hash index greater than hash count")
 	}
 
 	for ; hashIndex < h.HashesCount; hashIndex++ {
@@ -163,38 +171,80 @@ func (h *Hash) lookup(name string) (Offset, error) {
 			dataOffset := h.Offsets[hashIndex]
 
 			if dataOffset == 0 {
-				return 0, fmt.Errorf("failed to find offset for %s", name)
+				return nil, fmt.Errorf("failed to find offset for %s", name)
 			}
 
 			h.r.Seek(int64(dataOffset), io.SeekStart)
 
-			var c chunk
+			var c Chunk
 			for {
 				if err := binary.Read(h.r, binary.LittleEndian, &c.StrOffset); err != nil {
-					return 0, err
+					return nil, err
 				}
 				if c.StrOffset == 0 { // bucket contents are done
 					break
 				} // FIXME: what should we do for hash collitions?
 				if err := binary.Read(h.r, binary.LittleEndian, &c.HashDataCount); err != nil {
-					return 0, err
+					return nil, err
 				}
 				for i := uint32(0); i < c.HashDataCount; i++ {
-					if err := binary.Read(h.r, binary.LittleEndian, h.entryType); err != nil {
-						return 0, err
+					var hdata []any
+					for _, atom := range h.Atoms { // TODO: this is more correct and less prone to breakage
+						switch atom.Type {
+						case AtomTypeNULL:
+							break
+						case AtomTypeDIEOffset, AtomTypeCUOffset:
+							if atom.Form != formData4 {
+								return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data4'", atom.Type, atom.Form)
+							}
+							var offset Offset
+							if err := binary.Read(h.r, binary.LittleEndian, &offset); err != nil {
+								return nil, err
+							}
+							hdata = append(hdata, &offset)
+						case AtomTypeTag:
+							if atom.Form != formData2 {
+								return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data2'", atom.Type, atom.Form)
+							}
+							var tag Tag
+							if err := binary.Read(h.r, binary.LittleEndian, &tag); err != nil {
+								return nil, err
+							}
+							hdata = append(hdata, &tag)
+						case AtomTypeNameFlags:
+							if atom.Form != formData4 {
+								return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data4'", atom.Type, atom.Form)
+							}
+							var flag uint8
+							if err := binary.Read(h.r, binary.LittleEndian, &flag); err != nil {
+								return nil, err
+							}
+							hdata = append(hdata, &flag)
+						case AtomTypeTypeFlags:
+							if atom.Form != formData1 {
+								return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data1'", atom.Type, atom.Form)
+							}
+							var flag AtomFlag
+							if err := binary.Read(h.r, binary.LittleEndian, &flag); err != nil {
+								return nil, err
+							}
+							hdata = append(hdata, &flag)
+						case AtomTypeQualNameHash:
+							if atom.Form != formData4 {
+								return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data4'", atom.Type, atom.Form)
+							}
+							var hash QualNameHash
+							if err := binary.Read(h.r, binary.LittleEndian, &hash); err != nil {
+								return nil, err
+							}
+							hdata = append(hdata, &hash)
+						}
 					}
-					c.HashData = append(c.HashData, h.entryType)
+					c.HashData = append(c.HashData, hdata)
 				}
 			}
 
-			switch v := h.entryType.(type) {
-			case *NameEntry:
-				return c.HashData[0].(*NameEntry).Offset, nil
-			case *TypeEntry:
-				return c.HashData[0].(*TypeEntry).Offset, nil
-			default:
-				return 0, fmt.Errorf("unknown entry type: %T", v)
-			}
+			return &c, nil
 		}
 
 		if (h.Hashes[hashIndex] % h.BucketCount) != bucketIndex {
@@ -202,7 +252,7 @@ func (h *Hash) lookup(name string) (Offset, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("failed to find offset for %s", name)
+	return nil, fmt.Errorf("failed to find offset for %s", name)
 }
 
 func (h *Hash) dump() (Entries, error) {
@@ -214,7 +264,7 @@ func (h *Hash) dump() (Entries, error) {
 
 		h.r.Seek(int64(off), io.SeekStart)
 
-		var c chunk
+		var c Chunk
 		if err := binary.Read(h.r, binary.LittleEndian, &c.StrOffset); err != nil {
 			return nil, err
 		}
@@ -224,33 +274,62 @@ func (h *Hash) dump() (Entries, error) {
 		if err := binary.Read(h.r, binary.LittleEndian, &c.HashDataCount); err != nil {
 			return nil, err
 		}
-		for i := uint32(0); i < c.HashDataCount; i++ {
-			if err := binary.Read(h.r, binary.LittleEndian, h.entryType); err != nil {
-				return nil, err
-			}
-			// for _, atom := range h.Atoms { // TODO: this is more correct and less prone to breakage
-			// 	switch atom.Type {
-			// 	case AtomTypeDIEOffset:
-			// 		if err := binary.Read(h.r, binary.LittleEndian, &tentry.DIEOffset); err != nil {
-			// 			return nil, err
-			// 		}
-			// 	case AtomTypeTag:
-			// 		if err := binary.Read(h.r, binary.LittleEndian, &tentry.Tag); err != nil {
-			// 			return nil, err
-			// 		}
-			// 	case AtomTypeTypeFlags:
-			// 		if err := binary.Read(h.r, binary.LittleEndian, &tentry.Flags); err != nil {
-			// 			return nil, err
-			// 		}
-			// 	case AtomTypeQualNameHash:
-			// 		if err := binary.Read(h.r, binary.LittleEndian, &tentry.QualNameHash); err != nil {
-			// 			return nil, err
-			// 		}
-			// 	}
-			// }
-			c.HashData = append(c.HashData, h.entryType)
-		}
 
+		for i := uint32(0); i < c.HashDataCount; i++ {
+			var hdata []any
+			for _, atom := range h.Atoms { // TODO: this is more correct and less prone to breakage
+				switch atom.Type {
+				case AtomTypeNULL:
+					break
+				case AtomTypeDIEOffset, AtomTypeCUOffset:
+					if atom.Form != formData4 {
+						return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data4'", atom.Type, atom.Form)
+					}
+					var offset Offset
+					if err := binary.Read(h.r, binary.LittleEndian, &offset); err != nil {
+						return nil, err
+					}
+					hdata = append(hdata, &offset)
+				case AtomTypeTag:
+					if atom.Form != formData2 {
+						return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data2'", atom.Type, atom.Form)
+					}
+					var tag Tag
+					if err := binary.Read(h.r, binary.LittleEndian, &tag); err != nil {
+						return nil, err
+					}
+					hdata = append(hdata, &tag)
+				case AtomTypeNameFlags:
+					if atom.Form != formData1 {
+						return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data1'", atom.Type, atom.Form)
+					}
+					var flag uint8
+					if err := binary.Read(h.r, binary.LittleEndian, &flag); err != nil {
+						return nil, err
+					}
+					hdata = append(hdata, &flag)
+				case AtomTypeTypeFlags:
+					if atom.Form != formData1 {
+						return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data1'", atom.Type, atom.Form)
+					}
+					var flag AtomFlag
+					if err := binary.Read(h.r, binary.LittleEndian, &flag); err != nil {
+						return nil, err
+					}
+					hdata = append(hdata, &flag)
+				case AtomTypeQualNameHash:
+					if atom.Form != formData4 {
+						return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data4'", atom.Type, atom.Form)
+					}
+					var hash QualNameHash
+					if err := binary.Read(h.r, binary.LittleEndian, &hash); err != nil {
+						return nil, err
+					}
+					hdata = append(hdata, &hash)
+				}
+			}
+			c.HashData = append(c.HashData, hdata)
+		}
 		ents = append(ents, c)
 	}
 

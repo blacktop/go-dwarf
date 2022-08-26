@@ -13,6 +13,7 @@ package dwarf
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"strconv"
 )
 
@@ -855,6 +856,14 @@ func (r *Reader) Seek(off Offset) {
 	r.b = makeBuf(r.d, u, "info", off, u.data[off-u.off:])
 }
 
+// SeekToEntry moves the reader to an arbitrary entry.
+func (reader *Reader) SeekToEntry(entry *Entry) error {
+	reader.Seek(entry.Offset)
+	// Consume the current entry so .Next works as intended
+	_, err := reader.Next()
+	return err
+}
+
 // maybeNextUnit advances to the next unit if this one is finished.
 func (r *Reader) maybeNextUnit() {
 	for len(r.b.data) == 0 && r.unit+1 < len(r.d.unit) {
@@ -1069,6 +1078,26 @@ func (d *Data) Ranges(e *Entry) ([][2]uint64, error) {
 	}
 
 	return ret, nil
+}
+
+func (reader *Reader) InstructionsForEntry(entry *Entry) ([]byte, error) {
+	if entry.Tag == TagMember {
+		instructions, ok := entry.Val(AttrDataMemberLoc).([]byte)
+		if !ok {
+			return nil, fmt.Errorf("member data has no data member location attribute")
+		}
+		// clone slice to prevent stomping on the dwarf data
+		return append([]byte{}, instructions...), nil
+	}
+
+	// non-member
+	instructions, ok := entry.Val(AttrLocation).([]byte)
+	if !ok {
+		return nil, fmt.Errorf("entry has no location attribute")
+	}
+
+	// clone slice to prevent stomping on the dwarf data
+	return append([]byte{}, instructions...), nil
 }
 
 // baseAddressForEntry returns the initial base address to be used when

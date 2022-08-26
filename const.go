@@ -208,6 +208,8 @@ func (a Attr) GoString() string {
 	return "dwarf." + a.String()
 }
 
+//go:generate stringer -type format -trimprefix=form
+
 // A format is a DWARF data encoding format.
 type format uint16
 

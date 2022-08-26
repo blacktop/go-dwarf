@@ -9,6 +9,8 @@
 package dwarf
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"strconv"
 )
@@ -327,22 +329,60 @@ type FuncType struct {
 	CommonType
 	ReturnType Type
 	ParamType  []Type
+	LowPC      uint64
+	HighPC     int64
 }
 
 func (t *FuncType) String() string {
-	s := "func("
+	var s string
+	if t.ReturnType != nil {
+		s += " " + t.ReturnType.String() + " "
+	}
+	s += t.Name + "("
 	for i, t := range t.ParamType {
 		if i > 0 {
 			s += ", "
 		}
 		s += t.String()
 	}
-	s += ")"
-	if t.ReturnType != nil {
-		s += " " + t.ReturnType.String()
-	}
+	s += ");"
+
 	return s
 }
+
+// A NamespaceType represents a namespace type.
+type NamespaceType struct {
+	CommonType
+	Type Type
+}
+
+func (t *NamespaceType) String() string { return t.Name }
+
+func (t *NamespaceType) Size() int64 { return t.Type.Size() }
+
+// A VariableType represents a variable type.
+type VariableType struct {
+	CommonType
+	Type    Type
+	Address uint64
+}
+
+func (t *VariableType) String() string { return fmt.Sprintf("%#x: %s %s", t.Address, t.Type, t.Name) }
+
+func (t *VariableType) Size() int64 { return t.Type.Size() }
+
+// A LabelType represents a variable type.
+type LabelType struct {
+	CommonType
+	Type    Type
+	Address uint64
+}
+
+func (t *LabelType) String() string {
+	return fmt.Sprintf("%#x: %s", t.Address, t.Name)
+}
+
+func (t *LabelType) Size() int64 { return t.Type.Size() }
 
 // A DotDotDotType represents the variadic ... function parameter.
 type DotDotDotType struct {
@@ -801,7 +841,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		}
 		t.Type = typeOf(e)
 
-	case TagSubroutineType:
+	case TagSubroutineType, TagSubprogram, TagInlinedSubroutine:
 		// Subroutine type.  (DWARF v2 §5.7)
 		// Attributes:
 		//	AttrType: type of return value if any
@@ -814,6 +854,9 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		t := new(FuncType)
 		typ = t
 		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
+		t.LowPC, _ = e.Val(AttrLowpc).(uint64)
+		t.HighPC, _ = e.Val(AttrHighpc).(int64)
 		if t.ReturnType = typeOf(e); err != nil {
 			goto Error
 		}
@@ -831,6 +874,71 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 				tkid = &DotDotDotType{}
 			}
 			t.ParamType = append(t.ParamType, tkid)
+		}
+		if orig, ok := e.Val(AttrAbstractOrigin).(Offset); ok { // TagInlinedSubroutine
+			tt, err := d.Type(orig)
+			if err != nil {
+				goto Error
+			}
+			t.Name = tt.(*FuncType).Name
+			t.ReturnType = tt.(*FuncType).ReturnType
+			t.ParamType = tt.(*FuncType).ParamType
+		}
+
+	case TagNamespace:
+		t := new(NamespaceType)
+		typ = t
+		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
+		if len(t.Name) == 0 {
+			t.Name = "(anonymous namespace)"
+		}
+		if t.Type = typeOf(e); err != nil {
+			goto Error
+		}
+
+	case TagLabel:
+		t := new(LabelType)
+		typ = t
+		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
+		if orig, ok := e.Val(AttrAbstractOrigin).(Offset); ok {
+			t.Type, err = d.Type(orig)
+			if err != nil {
+				goto Error
+			}
+			typeCache[orig] = t.Type
+			t.Name = t.Type.(*LabelType).Name
+		} else {
+			if t.Type = typeOf(e); err != nil {
+				goto Error
+			}
+		}
+		t.Address, _ = e.Val(AttrLowpc).(uint64)
+
+	case TagVariable:
+		t := new(VariableType)
+		typ = t
+		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
+		if len(t.Name) == 0 {
+			t.Name, _ = e.Val(AttrLinkageName).(string)
+		}
+		if spec, ok := e.Val(AttrSpecification).(Offset); ok {
+			t.Type, err = d.Type(spec)
+			if err != nil {
+				goto Error
+			}
+			typeCache[spec] = t.Type
+		} else {
+			if t.Type = typeOf(e); err != nil {
+				goto Error
+			}
+		}
+		if loc, ok := e.Val(AttrLocation).([]byte); ok {
+			if len(loc) == binary.Size(uint64(0))+1 && loc[0] == opAddr {
+				binary.Read(bytes.NewReader(loc[1:]), binary.LittleEndian, &t.Address)
+			}
 		}
 
 	case TagTypedef:
@@ -857,6 +965,9 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		// Ptrauth type (DWARF v??)
 		// Attributes:
 		//	AttrName: name
+		//	AttrLlvmPtrauthKey: key
+		//	AttrLlvmPtrauthAddressDiscriminated: discriminated
+		//	AttrLlvmPtrauthExtraDiscriminator: discriminator
 		t := new(PtrauthType)
 		typ = t
 		typeCache[off] = t
