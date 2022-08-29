@@ -1100,6 +1100,43 @@ func (reader *Reader) InstructionsForEntry(entry *Entry) ([]byte, error) {
 	return append([]byte{}, instructions...), nil
 }
 
+func (d *Data) FilesForEntry(e *Entry) ([]*LineFile, error) {
+
+	r := d.Reader()
+
+	if len(d.cunits) == 0 {
+		for e, _ := r.Next(); e != nil; e, _ = r.Next() {
+			if e.Tag == TagCompileUnit {
+				d.cunits = append(d.cunits, e.Offset)
+			}
+		}
+	}
+
+	for i := 0; i < len(d.cunits); i++ {
+		if i < len(d.unit)-1 {
+			if e.Offset >= d.cunits[i] && e.Offset < d.cunits[i+1] {
+				r.Seek(d.cunits[i])
+				break
+			}
+		} else {
+			if e.Offset >= d.cunits[i] {
+				r.Seek(d.cunits[i])
+			}
+		}
+	}
+
+	cu, err := r.Next()
+	if err != nil {
+		return nil, fmt.Errorf("error reading compile unit: %v", err)
+	}
+	lr, err := d.LineReader(cu)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get line reader for entry: %v", err)
+	}
+
+	return lr.Files(), nil
+}
+
 // baseAddressForEntry returns the initial base address to be used when
 // looking up the range list of entry e.
 // DWARF specifies that this should be the lowpc attribute of the enclosing

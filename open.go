@@ -40,6 +40,7 @@ type Data struct {
 	typeSigs    map[uint64]*typeUnit
 	hashes      map[string]*Hash
 	unit        []unit
+	cunits      []Offset
 }
 
 var errSegmentSelector = errors.New("non-zero segment_selector size not supported")

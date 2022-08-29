@@ -331,6 +331,10 @@ type FuncType struct {
 	ParamType  []Type
 	LowPC      uint64
 	HighPC     int64
+	FileIndex  int64
+	FileLine   int64
+	FileColumn int64
+	Ranges     [][2]uint64
 }
 
 func (t *FuncType) String() string {
@@ -370,6 +374,20 @@ type VariableType struct {
 func (t *VariableType) String() string { return fmt.Sprintf("%#x: %s %s", t.Address, t.Type, t.Name) }
 
 func (t *VariableType) Size() int64 { return t.Type.Size() }
+
+// A MemberType represents a member type.
+type MemberType struct {
+	CommonType
+	Type        Type
+	FileIndex   int64
+	FileLine    int64
+	External    bool
+	Declaration bool
+}
+
+func (t *MemberType) String() string { return fmt.Sprintf("%s %s", t.Type, t.Name) }
+
+func (t *MemberType) Size() int64 { return t.Type.Size() }
 
 // A LabelType represents a variable type.
 type LabelType struct {
@@ -841,7 +859,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		}
 		t.Type = typeOf(e)
 
-	case TagSubroutineType, TagSubprogram, TagInlinedSubroutine:
+	case TagSubroutineType, TagSubprogram:
 		// Subroutine type.  (DWARF v2 §5.7)
 		// Attributes:
 		//	AttrType: type of return value if any
@@ -857,6 +875,13 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		t.Name, _ = e.Val(AttrName).(string)
 		t.LowPC, _ = e.Val(AttrLowpc).(uint64)
 		t.HighPC, _ = e.Val(AttrHighpc).(int64)
+		t.FileIndex, _ = e.Val(AttrDeclFile).(int64)
+		t.FileLine, _ = e.Val(AttrDeclLine).(int64)
+		t.FileColumn, _ = e.Val(AttrDeclColumn).(int64)
+		t.Ranges, err = d.Ranges(e)
+		if err != nil {
+			goto Error
+		}
 		if t.ReturnType = typeOf(e); err != nil {
 			goto Error
 		}
@@ -875,7 +900,35 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			}
 			t.ParamType = append(t.ParamType, tkid)
 		}
-		if orig, ok := e.Val(AttrAbstractOrigin).(Offset); ok { // TagInlinedSubroutine
+		if orig, ok := e.Val(AttrAbstractOrigin).(Offset); ok {
+			tt, err := d.Type(orig)
+			if err != nil {
+				goto Error
+			}
+			t.Name = tt.(*FuncType).Name
+			t.ReturnType = tt.(*FuncType).ReturnType
+			t.ParamType = tt.(*FuncType).ParamType
+			if t.FileIndex == 0 {
+				t.FileIndex = tt.(*FuncType).FileIndex
+				t.FileLine = tt.(*FuncType).FileLine
+				t.FileColumn = tt.(*FuncType).FileColumn
+			}
+		}
+	case TagInlinedSubroutine:
+		t := new(FuncType)
+		typ = t
+		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
+		t.LowPC, _ = e.Val(AttrLowpc).(uint64)
+		t.HighPC, _ = e.Val(AttrHighpc).(int64)
+		t.FileIndex, _ = e.Val(AttrCallFile).(int64)
+		t.FileLine, _ = e.Val(AttrCallLine).(int64)
+		t.FileColumn, _ = e.Val(AttrCallColumn).(int64)
+		t.Ranges, err = d.Ranges(e)
+		if err != nil {
+			goto Error
+		}
+		if orig, ok := e.Val(AttrAbstractOrigin).(Offset); ok {
 			tt, err := d.Type(orig)
 			if err != nil {
 				goto Error
@@ -940,6 +993,19 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 				binary.Read(bytes.NewReader(loc[1:]), binary.LittleEndian, &t.Address)
 			}
 		}
+
+	case TagMember:
+		t := new(MemberType)
+		typ = t
+		typeCache[off] = t
+		t.Name, _ = e.Val(AttrName).(string)
+		if t.Type = typeOf(e); err != nil {
+			goto Error
+		}
+		t.FileIndex, _ = e.Val(AttrDeclFile).(int64)
+		t.FileLine, _ = e.Val(AttrDeclLine).(int64)
+		t.External, _ = e.Val(AttrExternal).(bool)
+		t.Declaration, _ = e.Val(AttrDeclaration).(bool)
 
 	case TagTypedef:
 		// Typedef (DWARF v2 §5.3)
