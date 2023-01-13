@@ -21,5 +21,5 @@ $ go get github.com/blacktop/go-dwarf
 
 ## License
 
-- MIT Copyright (c) 2022 **blacktop**
+- MIT Copyright (c) 2022-2023 **blacktop**
 - Copyright (c) 2009 The Go Authors
