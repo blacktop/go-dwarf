@@ -415,7 +415,9 @@ type TypedefType struct {
 	Type Type
 }
 
-func (t *TypedefType) String() string { return t.Name }
+func (t *TypedefType) String() string {
+	return fmt.Sprintf("typedef %s %s", t.Type.Common().Name, t.Name)
+}
 
 func (t *TypedefType) Size() int64 { return t.Type.Size() }
 
