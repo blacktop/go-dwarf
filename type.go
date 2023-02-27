@@ -154,7 +154,12 @@ type PtrType struct {
 	Type Type
 }
 
-func (t *PtrType) String() string { return t.Type.String() + "*" }
+func (t *PtrType) String() string {
+	if t.Type == nil {
+		return "void*"
+	}
+	return t.Type.String() + "*"
+}
 
 // A StructType represents a struct, union, or C++ class type.
 type StructType struct {
@@ -280,6 +285,8 @@ func (t *StructType) Defn() string {
 		prevOffset = fmt.Sprintf("// @ %#x", f.ByteOffset)
 		switch f.Type.(type) {
 		case *ArrayType:
+			s += f.Type.Format(f.Name)
+		case *TypedefType:
 			s += f.Type.Format(f.Name)
 		default:
 			s += f.Type.String() + " " + f.Name
@@ -416,7 +423,14 @@ type TypedefType struct {
 }
 
 func (t *TypedefType) String() string {
+	if t.Type == nil {
+		return t.Name
+	}
 	return fmt.Sprintf("typedef %s %s", t.Type.Common().Name, t.Name)
+}
+
+func (t *TypedefType) Format(name string) string {
+	return fmt.Sprintf("%s %s", t.Name, name)
 }
 
 func (t *TypedefType) Size() int64 { return t.Type.Size() }
@@ -424,6 +438,7 @@ func (t *TypedefType) Size() int64 { return t.Type.Size() }
 // A PtrauthType represents a LLVM ptrauth type.
 type PtrauthType struct {
 	CommonType
+	Type          Type
 	Key           int64
 	Discriminated bool
 	Discriminator int64
@@ -438,7 +453,10 @@ func (t *PtrauthType) GetKey() string {
 }
 
 func (t *PtrauthType) String() string {
-	return fmt.Sprintf("__ptrauth(%s, %t, %x)", t.GetKey(), t.Discriminated, t.Discriminator)
+	if t.Type == nil {
+		return fmt.Sprintf("__ptrauth(%s, %t, %#x)", t.GetKey(), t.Discriminated, t.Discriminator)
+	}
+	return fmt.Sprintf("%s __ptrauth(%s, %t, %#x)", t.Type, t.GetKey(), t.Discriminated, t.Discriminator)
 }
 
 // An UnsupportedType is a placeholder returned in situations where we
@@ -1040,6 +1058,9 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		typ = t
 		typeCache[off] = t
 		t.Name, _ = e.Val(AttrName).(string)
+		if t.Type = typeOf(e); err != nil {
+			goto Error
+		}
 		t.Key, _ = e.Val(AttrLlvmPtrauthKey).(int64)
 		t.Discriminated, _ = e.Val(AttrLlvmPtrauthAddressDiscriminated).(bool)
 		t.Discriminator, _ = e.Val(AttrLlvmPtrauthExtraDiscriminator).(int64)
