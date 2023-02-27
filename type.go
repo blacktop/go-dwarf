@@ -286,8 +286,6 @@ func (t *StructType) Defn() string {
 		switch f.Type.(type) {
 		case *ArrayType:
 			s += f.Type.Format(f.Name)
-		case *TypedefType:
-			s += f.Type.Format(f.Name)
 		default:
 			s += f.Type.String() + " " + f.Name
 		}
@@ -323,7 +321,7 @@ func (t *EnumType) String() string {
 	s += " {"
 	for i, v := range t.Val {
 		if i > 0 {
-			s += "; "
+			s += ",\n"
 		}
 		s += v.Name + "=" + strconv.FormatInt(v.Val, 10)
 	}
@@ -422,12 +420,7 @@ type TypedefType struct {
 	Type Type
 }
 
-func (t *TypedefType) String() string {
-	if t.Type == nil {
-		return t.Name
-	}
-	return fmt.Sprintf("typedef %s %s", t.Type.Common().Name, t.Name)
-}
+func (t *TypedefType) String() string { return t.Name }
 
 func (t *TypedefType) Format(name string) string {
 	return fmt.Sprintf("%s %s", t.Name, name)
