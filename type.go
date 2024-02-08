@@ -253,11 +253,13 @@ type StructField struct {
 	BitSize       int64 // zero if not a bit field
 }
 
+var showStructOffsets = false
+
 func (t *StructType) String() string {
 	if t.StructName != "" {
 		return t.Kind + " " + t.StructName
 	}
-	return t.Defn()
+	return t.Defn(showStructOffsets)
 }
 
 func (f *StructField) bitOffset() int64 {
@@ -267,7 +269,8 @@ func (f *StructField) bitOffset() int64 {
 	return f.DataBitOffset
 }
 
-func (t *StructType) Defn() string {
+func (t *StructType) Defn(showOffsets bool) string {
+	showStructOffsets = showOffsets
 	s := t.Kind
 	if t.StructName != "" {
 		s += " " + t.StructName
@@ -282,14 +285,16 @@ func (t *StructType) Defn() string {
 		if i > 0 {
 			s += fmt.Sprintf(";\t%s\n", prevOffset)
 		}
-		prevOffset = fmt.Sprintf("// @ %#x", f.ByteOffset)
+		if showOffsets {
+			prevOffset = fmt.Sprintf("// @ %#x", f.ByteOffset)
+		}
 		switch f.Type.(type) {
 		case *ArrayType:
 			s += f.Type.Format(f.Name)
 		default:
 			s += f.Type.String() + " " + f.Name
 		}
-		if f.BitSize > 0 {
+		if f.BitSize > 0 && showOffsets {
 			s += " : " + strconv.FormatInt(f.BitSize, 10)
 			s += "@" + strconv.FormatInt(f.bitOffset(), 10)
 		}

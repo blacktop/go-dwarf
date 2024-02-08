@@ -192,7 +192,7 @@ func (h *Hash) lookup(name string) (*Chunk, error) {
 					for _, atom := range h.Atoms { // TODO: this is more correct and less prone to breakage
 						switch atom.Type {
 						case AtomTypeNULL:
-							break
+							continue
 						case AtomTypeDIEOffset, AtomTypeCUOffset:
 							if atom.Form != formData4 {
 								return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data4'", atom.Type, atom.Form)
@@ -280,7 +280,7 @@ func (h *Hash) dump() (Entries, error) {
 			for _, atom := range h.Atoms { // TODO: this is more correct and less prone to breakage
 				switch atom.Type {
 				case AtomTypeNULL:
-					break
+					continue
 				case AtomTypeDIEOffset, AtomTypeCUOffset:
 					if atom.Form != formData4 {
 						return nil, fmt.Errorf("unexpected form for atom type %s: got %s and expect 'Data4'", atom.Type, atom.Form)

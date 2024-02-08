@@ -119,7 +119,7 @@ func testTypedefs(t *testing.T, d *Data, kind string, testcases map[string]strin
 			t1 := typ.(*TypedefType)
 			var typstr string
 			if ts, ok := t1.Type.(*StructType); ok {
-				typstr = ts.Defn()
+				typstr = ts.Defn(true)
 			} else {
 				typstr = t1.Type.String()
 			}
