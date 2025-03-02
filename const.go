@@ -559,6 +559,20 @@ const (
 	utSplitType    = 0x06
 )
 
+//go:generate stringer -type Index -trimprefix=Index
+
+type Index uint16
+
+const (
+	IndexCompileUnit Index = 0x01
+	IndexTypeUnit    Index = 0x02
+	IndexDieOffset   Index = 0x03
+	IndexParent      Index = 0x04
+	IndexTypeHash    Index = 0x05
+	IndexGNUInternal Index = 0x2000
+	IndexGNUExternal Index = 0x2001
+)
+
 // Opcodes for DWARFv5 debug_rnglists section.
 const (
 	rleEndOfList    = 0x0

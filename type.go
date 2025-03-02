@@ -141,6 +141,16 @@ func (t *ArrayType) Size() int64 {
 	return t.Count * t.Type.Size()
 }
 
+// A AtomicType represents an atomic type.
+type AtomicType struct {
+	CommonType
+	Type Type
+}
+
+func (t *AtomicType) String() string {
+	return "atomic " + t.Type.String()
+}
+
 // A VoidType represents the C void type.
 type VoidType struct {
 	CommonType
@@ -1063,6 +1073,14 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		t.Discriminated, _ = e.Val(AttrLlvmPtrauthAddressDiscriminated).(bool)
 		t.Discriminator, _ = e.Val(AttrLlvmPtrauthExtraDiscriminator).(int64)
 
+	case TagAtomicType:
+		// Atomic type (DWARF v??)
+		t := new(AtomicType)
+		typ = t
+		typeCache[off] = t
+		if t.Type = typeOf(e); err != nil {
+			goto Error
+		}
 	default:
 		// This is some other type DIE that we're currently not
 		// equipped to handle. Return an abstract "unsupported type"

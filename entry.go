@@ -692,6 +692,10 @@ func (b *buf) entry(cu *Entry, atab abbrevTable, ubase Offset, vers int) *Entry 
 			} else if a.tag == TagCompileUnit {
 				delay = append(delay, delayed{i, off, formStrx})
 				break
+			} else if b.dwarf.cu != nil {
+				strBase, _ = b.dwarf.cu.Val(AttrStrOffsetsBase).(int64)
+			} else {
+				b.error("DW_FORM_strx in unknown compilation unit")
 			}
 
 			val = resolveStrx(uint64(strBase), off)
@@ -906,6 +910,7 @@ func (r *Reader) Next() (*Entry, error) {
 		if e.Tag == TagCompileUnit || e.Tag == TagPartialUnit {
 			r.lastUnit = true
 			r.cu = e
+			r.d.cu = e // FIXME: remove this; see <https://github.com/golang/go/issues/57046>
 		}
 	} else {
 		r.lastChildren = false
