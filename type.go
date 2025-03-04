@@ -148,7 +148,7 @@ type AtomicType struct {
 }
 
 func (t *AtomicType) String() string {
-	return "atomic " + t.Type.String()
+	return "_Atomic " + t.Type.String()
 }
 
 // A VoidType represents the C void type.
