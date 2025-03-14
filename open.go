@@ -152,7 +152,7 @@ func (d *Data) AddHashes(name string, contents []byte) error {
 func (d *Data) LookupType(name string) (Offset, error) {
 	thash, ok := d.hashes["types"]
 	if !ok {
-		return 0, fmt.Errorf("failed to find '__DWARF.__apple_types' hash data")
+		return 0, fmt.Errorf("failed to find '__DWARF.__apple_types' hash data: %w", ErrHashNotFound)
 	}
 	c, err := thash.lookup(name)
 	if err != nil {
@@ -164,7 +164,7 @@ func (d *Data) LookupType(name string) (Offset, error) {
 func (d *Data) DumpTypes() (Entries, error) {
 	thash, ok := d.hashes["types"]
 	if !ok {
-		return nil, fmt.Errorf("failed to find '__DWARF.__apple_types' hash data")
+		return nil, fmt.Errorf("failed to find '__DWARF.__apple_types' hash data: %w", ErrHashNotFound)
 	}
 	return thash.dump()
 }
@@ -184,7 +184,7 @@ func (d *Data) LookupName(name string) (Offset, error) {
 func (d *Data) DumpNames() (Entries, error) {
 	thash, ok := d.hashes["names"]
 	if !ok {
-		return nil, fmt.Errorf("failed to find '__DWARF.__apple_names' hash data")
+		return nil, fmt.Errorf("failed to find '__DWARF.__apple_names' hash data: %w", ErrHashNotFound)
 	}
 	return thash.dump()
 }
@@ -192,7 +192,7 @@ func (d *Data) DumpNames() (Entries, error) {
 func (d *Data) LookupNamespace(name string) (Offset, error) {
 	thash, ok := d.hashes["namespac"]
 	if !ok {
-		return 0, fmt.Errorf("failed to find '__DWARF.__apple_namespac' hash data")
+		return 0, fmt.Errorf("failed to find '__DWARF.__apple_namespac' hash data: %w", ErrHashNotFound)
 	}
 	c, err := thash.lookup(name)
 	if err != nil {
@@ -204,7 +204,7 @@ func (d *Data) LookupNamespace(name string) (Offset, error) {
 func (d *Data) DumpNamespaces() (Entries, error) {
 	thash, ok := d.hashes["namespac"]
 	if !ok {
-		return nil, fmt.Errorf("failed to find '__DWARF.__apple_namespac' hash data")
+		return nil, fmt.Errorf("failed to find '__DWARF.__apple_namespac' hash data: %w", ErrHashNotFound)
 	}
 	return thash.dump()
 }
@@ -212,7 +212,7 @@ func (d *Data) DumpNamespaces() (Entries, error) {
 func (d *Data) LookupObjC(name string) (Offset, error) {
 	thash, ok := d.hashes["objc"]
 	if !ok {
-		return 0, fmt.Errorf("failed to find '__DWARF.__apple_objc' hash data")
+		return 0, fmt.Errorf("failed to find '__DWARF.__apple_objc' hash data: %w", ErrHashNotFound)
 	}
 	c, err := thash.lookup(name)
 	if err != nil {
@@ -224,7 +224,7 @@ func (d *Data) LookupObjC(name string) (Offset, error) {
 func (d *Data) DumpObjC() (Entries, error) {
 	thash, ok := d.hashes["objc"]
 	if !ok {
-		return nil, fmt.Errorf("failed to find '__DWARF.__apple_objc' hash data")
+		return nil, fmt.Errorf("failed to find '__DWARF.__apple_objc' hash data: %w", ErrHashNotFound)
 	}
 	return thash.dump()
 }
