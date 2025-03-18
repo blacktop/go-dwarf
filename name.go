@@ -32,20 +32,6 @@ type dbgNamesHeader struct {
 	Augmentation         string // Augmentation string
 }
 
-// nameAbbrev represents a Name Index abbreviation
-type nameAbbrev struct {
-	Code       uint32             // Abbreviation code
-	Tag        Tag                // DWARF Tag
-	Attributes []nameAttrEncoding // Attributes and their encoding
-}
-
-// nameAttrEncoding represents how an attribute should be decoded
-type nameAttrEncoding struct {
-	Index Index  // Index - identifies which attribute
-	Form  format // Form - encoding used to represent the attribute
-	Value int64  // Only used for DW_FORM_implicit_const
-}
-
 // Add this struct to store offsets
 type debugNamesOffsets struct {
 	CUsBase           int64
@@ -66,7 +52,7 @@ type DebugNames struct {
 	NameTable      []uint32       // String offsets
 	StringOffsets  []uint32       // String offsets
 	EntryOffsets   []uint32       // Entry offsets
-	AbbrevTable    []nameAbbrev   // Abbreviation table
+	AbbrevTable    abbrevTable    // Abbreviation table
 	CompUnitsMap   map[uint64]int // Map for quick CU lookup
 	LocalTypesMap  map[uint64]int // Map for quick local TU lookup
 	ForeignTypeMap map[uint64]int // Map for quick foreign TU lookup
@@ -81,7 +67,7 @@ type DebugNameEntry struct {
 	CUOffset  Offset // compilation unit entry offset
 	CUIndex   uint64 // Index into the compilation unit list
 	Tag       Tag    // The tag of the DIE
-	ParentIdx uint32 // Parent index - only used if IndexedParent is set
+	ParentIdx Offset // Parent index - only used if IndexedParent is set
 }
 
 // Add this function to calculate offsets
@@ -256,69 +242,72 @@ func (d *Data) parseNames(name string, hashes []byte) error {
 
 	// Parse abbreviation table
 	// Get the current position, which is the start of the abbreviation table
-	// abbrevStart, _ := d.names.data.Seek(0, io.SeekCurrent)
-	// abbrevEnd := abbrevStart + int64(d.names.Header.AbbrevTableSize)
-	d.names.AbbrevTable = make([]nameAbbrev, 0)
-
-	for {
-		// Read abbreviation code (unsigned LEB128)
-		code, err := readULEB128(d.names.data)
-		if err != nil {
-			return err
-		}
-
-		if code == 0 {
-			break // End of abbreviation table
-		}
-
-		var abbr nameAbbrev
-		abbr.Code = uint32(code)
-
-		// Read tag (unsigned LEB128)
-		tagVal, err := readULEB128(d.names.data)
-		if err != nil {
-			return err
-		}
-		abbr.Tag = Tag(tagVal)
-
-		// Read attribute encodings
-		for {
-			// Read attribute index (unsigned LEB128)
-			nameIdx, err := readULEB128(d.names.data)
-			if err != nil {
-				return err
-			}
-
-			// Read attribute form (unsigned LEB128)
-			formVal, err := readULEB128(d.names.data)
-			if err != nil {
-				return err
-			}
-
-			if nameIdx == 0 && formVal == 0 {
-				break // End of attribute list
-			}
-
-			var attr nameAttrEncoding
-			attr.Index = Index(nameIdx)
-			attr.Form = format(formVal)
-
-			// For DW_FORM_implicit_const, read the value (signed LEB128)
-			if attr.Form == dwFormImplicitConst {
-				val, err := readSLEB128(d.names.data)
-				if err != nil {
-					return err
-				}
-				attr.Value = val
-			}
-
-			abbr.Attributes = append(abbr.Attributes, attr)
-		}
-
-		d.names.AbbrevTable = append(d.names.AbbrevTable, abbr)
+	abbrevdata := make([]byte, d.names.Header.AbbrevTableSize)
+	err := binary.Read(d.names.data, d.order, &abbrevdata)
+	if err != nil {
+		return err
+	}
+	d.names.AbbrevTable, err = d.parseDbgAbbrev(abbrevdata, 5)
+	if err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func (d *Data) parseDbgAbbrev(data []byte, vers int) (abbrevTable, error) {
+	b := makeBuf(d, unknownFormat{}, "dbg_abbrev", 0, data)
+
+	// Error handling is simplified by the buf getters
+	// returning an endless stream of 0s after an error.
+	m := make(abbrevTable)
+	for {
+		// Table ends with id == 0.
+		id := uint32(b.uint())
+		if id == 0 {
+			break
+		}
+
+		// Walk over attributes, counting.
+		n := 0
+		b1 := b   // Read from copy of b.
+		b1.uint() // tag
+		for {
+			idx := b1.uint()
+			fmt := b1.uint()
+			if idx == 0 && fmt == 0 {
+				break
+			}
+			if format(fmt) == formImplicitConst {
+				b1.int()
+			}
+			n++
+		}
+		if b1.err != nil {
+			return nil, b1.err
+		}
+
+		// Walk over attributes again, this time writing them down.
+		var a abbrev
+		a.tag = Tag(b.uint())
+		a.field = make([]afield, n)
+		for i := range a.field {
+			a.field[i].idx = Index(b.uint())
+			a.field[i].fmt = format(b.uint())
+			// a.field[i].class = formToClass(a.field[i].fmt, a.field[i].attr, vers, &b)
+			if a.field[i].fmt == formImplicitConst {
+				a.field[i].val = b.int()
+			}
+		}
+		b.uint()
+		b.uint()
+
+		m[id] = a
+	}
+	if b.err != nil {
+		return nil, b.err
+	}
+	return m, nil
 }
 
 func getDwarfOffsetByteSize(headerFormat byte) int {
@@ -366,34 +355,6 @@ func readULEB128(r io.Reader) (uint64, error) {
 		}
 
 		shift += 7
-	}
-
-	return result, nil
-}
-
-// readSLEB128 reads a signed LEB128 value from the reader
-func readSLEB128(r io.Reader) (int64, error) {
-	var result int64
-	var shift uint
-	var b byte
-	var err error
-
-	for {
-		if err = binary.Read(r, binary.LittleEndian, &b); err != nil {
-			return 0, err
-		}
-
-		result |= int64(b&0x7f) << shift
-		shift += 7
-
-		if b&0x80 == 0 {
-			break
-		}
-	}
-
-	// Sign extend if necessary
-	if shift < 64 && (b&0x40 != 0) {
-		result |= -(1 << shift)
 	}
 
 	return result, nil
@@ -453,20 +414,20 @@ func (d *Data) LookupDebugName(name string) ([]DebugNameEntry, error) {
 					break // End of abbreviation table
 				}
 
-				nentry := DebugNameEntry{Tag: d.names.AbbrevTable[code-1].Tag}
+				nentry := DebugNameEntry{Tag: d.names.AbbrevTable[uint32(code)].tag}
 				if len(d.names.CompUnits) == 1 {
 					nentry.CUIndex = 0
 					nentry.CUOffset = Offset(d.names.CompUnits[0])
 				}
 
-				for i := range d.names.AbbrevTable[code-1].Attributes {
-					attr := d.names.AbbrevTable[code-1].Attributes[i]
-					if attr.Index == Index(0) {
+				for i := range d.names.AbbrevTable[uint32(code)].field {
+					attr := d.names.AbbrevTable[uint32(code)].field[i]
+					if attr.idx == Index(0) {
 						continue
 					}
-					switch attr.Index {
+					switch attr.idx {
 					case IndexCompileUnit:
-						switch attr.Form {
+						switch attr.fmt {
 						case formData1:
 							var cuIdx uint8
 							if err := binary.Read(d.names.data, d.order, &cuIdx); err != nil {
@@ -494,10 +455,10 @@ func (d *Data) LookupDebugName(name string) ([]DebugNameEntry, error) {
 							}
 							nentry.CUOffset = d.unit[nentry.CUIndex].off
 						default:
-							return nil, fmt.Errorf("unsupported CU index form: %v", attr.Form)
+							return nil, fmt.Errorf("unsupported CU index form: %v", attr.fmt)
 						}
 					case IndexDieOffset:
-						switch attr.Form {
+						switch attr.fmt {
 						case formRef1:
 							var dieOffset uint8
 							if err := binary.Read(d.names.data, d.order, &dieOffset); err != nil {
@@ -529,7 +490,44 @@ func (d *Data) LookupDebugName(name string) ([]DebugNameEntry, error) {
 							}
 							nentry.DIEOffset = Offset(dieOffset) + d.unit[nentry.CUIndex].base
 						default:
-							return nil, fmt.Errorf("unsupported DIE offset form: %v", attr.Form)
+							return nil, fmt.Errorf("unsupported DIE offset form: %v", attr.fmt)
+						}
+					case IndexParent:
+						switch attr.fmt {
+						case formRef1:
+							var dieOffset uint8
+							if err := binary.Read(d.names.data, d.order, &dieOffset); err != nil {
+								return nil, err
+							}
+							nentry.ParentIdx = Offset(dieOffset)
+						case formRef2:
+							var dieOffset uint16
+							if err := binary.Read(d.names.data, d.order, &dieOffset); err != nil {
+								return nil, err
+							}
+							nentry.ParentIdx = Offset(dieOffset)
+						case formRef4:
+							var dieOffset uint32
+							if err := binary.Read(d.names.data, d.order, &dieOffset); err != nil {
+								return nil, err
+							}
+							nentry.ParentIdx = Offset(dieOffset)
+						case formRef8:
+							var dieOffset uint64
+							if err := binary.Read(d.names.data, d.order, &dieOffset); err != nil {
+								return nil, err
+							}
+							nentry.ParentIdx = Offset(dieOffset)
+						case formRefUdata:
+							dieOffset, err := readULEB128(d.names.data)
+							if err != nil {
+								return nil, err
+							}
+							nentry.ParentIdx = Offset(dieOffset)
+						case formFlagPresent:
+							// Parent is present, but we don't have an offset
+						default:
+							return nil, fmt.Errorf("unsupported Parent form: %v", attr.fmt)
 						}
 					}
 				}

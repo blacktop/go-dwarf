@@ -347,14 +347,16 @@ func (t *EnumType) String() string {
 // A FuncType represents a function type.
 type FuncType struct {
 	CommonType
-	ReturnType Type
-	ParamType  []Type
-	LowPC      uint64
-	HighPC     int64
-	FileIndex  int64
-	FileLine   int64
-	FileColumn int64
-	Ranges     [][2]uint64
+	ReturnType  Type
+	ParamType   []Type
+	LowPC       uint64
+	HighPC      int64
+	FileIndex   int64
+	FileLine    int64
+	FileColumn  int64
+	Ranges      [][2]uint64
+	LinkageName string
+	Inline      int64
 }
 
 func (t *FuncType) String() string {
@@ -906,6 +908,8 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		t.FileIndex, _ = e.Val(AttrDeclFile).(int64)
 		t.FileLine, _ = e.Val(AttrDeclLine).(int64)
 		t.FileColumn, _ = e.Val(AttrDeclColumn).(int64)
+		t.LinkageName, _ = e.Val(AttrLinkageName).(string)
+		t.Inline, _ = e.Val(AttrInline).(int64)
 		t.Ranges, err = d.Ranges(e)
 		if err != nil {
 			goto Error
@@ -952,6 +956,8 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 		t.FileIndex, _ = e.Val(AttrCallFile).(int64)
 		t.FileLine, _ = e.Val(AttrCallLine).(int64)
 		t.FileColumn, _ = e.Val(AttrCallColumn).(int64)
+		t.LinkageName, _ = e.Val(AttrLinkageName).(string)
+		t.Inline, _ = e.Val(AttrInline).(int64)
 		t.Ranges, err = d.Ranges(e)
 		if err != nil {
 			goto Error
@@ -964,6 +970,7 @@ func (d *Data) readType(name string, r typeReader, off Offset, typeCache map[Off
 			t.Name = tt.(*FuncType).Name
 			t.ReturnType = tt.(*FuncType).ReturnType
 			t.ParamType = tt.(*FuncType).ParamType
+			t.LinkageName = tt.(*FuncType).LinkageName
 		}
 
 	case TagNamespace:
