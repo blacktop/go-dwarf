@@ -14,10 +14,11 @@
 //   - .eh_frame identifies CIEs with CIE id 0 and uses a backward-relative
 //     CIE pointer in FDEs.
 //   - EH augmentation strings support z, L, P, R, S, B and G.
-//   - EH encoded pointers implement the DW_EH_PE format/application bits.
+//   - EH encoded pointers support absolute and PC-relative applications;
+//     indirect personality and LSDA pointers retain their slot addresses.
 //
-// The CFI state machine follows the DWARF call-frame rules and produces
-// PC-indexed unwind rows similar to LLVM's UnwindTable.
+// The CFI state machine produces PC-indexed unwind rows. Architecture-specific
+// execution requires an explicit supported architecture.
 
 package dwarf
 
@@ -26,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 )
 
@@ -246,7 +248,9 @@ type CIE struct {
 	FDEPointerEncoding  uint8
 	LSDAPointerEncoding uint8
 	PersonalityEncoding *uint8
-	Personality         *uint64
+	// Personality is the decoded pointer address. When PersonalityEncoding
+	// has DW_EH_PE_indirect (0x80) set, this is the address of the pointer slot.
+	Personality *uint64
 
 	// B is the AArch64 pointer-authentication augmentation.
 	HasBKey bool
@@ -265,7 +269,9 @@ type FDE struct {
 	CIE             *CIE
 	InitialLocation uint64
 	AddressRange    uint64
-	LSDAAddress     *uint64
+	// LSDAAddress is the decoded pointer address. When CIE.LSDAPointerEncoding
+	// has DW_EH_PE_indirect (0x80) set, this is the address of the pointer slot.
+	LSDAAddress *uint64
 }
 
 type Frame struct {
@@ -343,9 +349,12 @@ type RegisterRule struct {
 }
 
 type CFARule struct {
-	Reg    uint64
-	Offset int64
-	Expr   []byte
+	// Defined distinguishes an explicit register-zero-plus-zero rule from an
+	// unspecified CFA.
+	Defined bool
+	Reg     uint64
+	Offset  int64
+	Expr    []byte
 	// Expression is true when Expr, rather than Reg+Offset, defines the CFA.
 	Expression bool
 }
@@ -368,6 +377,15 @@ type UnwindRow struct {
 type UnwindTable struct {
 	Rows []UnwindRow
 }
+
+// FrameArchitecture selects the meaning of architecture-specific CFI opcodes.
+type FrameArchitecture uint8
+
+const (
+	// FrameArchUnknown permits architecture-independent instructions only.
+	FrameArchUnknown FrameArchitecture = iota
+	FrameArchAArch64
+)
 
 func (t *UnwindTable) RowForPC(pc uint64) *UnwindRow {
 	if len(t.Rows) == 0 {
@@ -531,6 +549,7 @@ type frameEntryHeader struct {
 	isDWARF64 bool
 	id        uint64
 	bodyStart int
+	dataStart int
 	end       int
 }
 
@@ -576,6 +595,9 @@ func readFrameHeader(r *frameReader, eh bool) (frameEntryHeader, error) {
 	if !eh && h.isDWARF64 {
 		idSize = 8
 	}
+	if h.length < uint64(idSize) {
+		return frameEntryHeader{}, fmt.Errorf("frame entry at %#x is shorter than its ID", start)
+	}
 
 	idBytes, err := r.bytes(idSize)
 	if err != nil {
@@ -586,6 +608,7 @@ func readFrameHeader(r *frameReader, eh bool) (frameEntryHeader, error) {
 	} else {
 		h.id = r.order.Uint64(idBytes)
 	}
+	h.dataStart = r.pos()
 	return h, nil
 }
 
@@ -622,7 +645,10 @@ func ParseFrame(data []byte, order binary.ByteOrder, addressSize int, sectionAdd
 	r := newFrameReader(data, order)
 
 	cieByOffset := make(map[int]*CIE)
+	var headers []frameEntryHeader
 
+	// Index every CIE before decoding FDEs: .debug_frame references are section
+	// offsets and may point forward. Keep the headers to preserve entry order.
 	for r.remain() > 0 {
 		start := r.pos()
 		h, err := readFrameHeader(r, ehFrame)
@@ -637,32 +663,34 @@ func ParseFrame(data []byte, order binary.ByteOrder, addressSize int, sectionAdd
 			}
 			return nil, fmt.Errorf("zero-length .debug_frame entry at %#x", h.start)
 		}
+		headers = append(headers, h)
 
 		if h.id == getFrameCIEID(h.isDWARF64, ehFrame) {
-			cie, err := parseCIE(r, h, f)
+			entry := &frameReader{data: data[:h.end], off: h.dataStart, order: order}
+			cie, err := parseCIE(entry, h, f)
 			if err != nil {
 				return nil, err
 			}
 			cieByOffset[h.start] = cie
 			f.CIEs = append(f.CIEs, cie)
-			f.Entries = append(f.Entries, cie.FrameEntry)
-		} else {
-			fde, err := parseFDE(r, h, f, cieByOffset)
-			if err != nil {
-				return nil, err
-			}
-			f.FDEs = append(f.FDEs, fde)
-			f.Entries = append(f.Entries, fde.FrameEntry)
 		}
+		if err := r.setPos(h.end); err != nil {
+			return nil, err
+		}
+	}
 
-		if r.pos() > h.end {
-			return nil, fmt.Errorf("frame entry at %#x over-read its declared length", h.start)
+	for _, h := range headers {
+		if cie := cieByOffset[h.start]; cie != nil {
+			f.Entries = append(f.Entries, cie.FrameEntry)
+			continue
 		}
-		if r.pos() < h.end {
-			if err := r.setPos(h.end); err != nil {
-				return nil, err
-			}
+		entry := &frameReader{data: data[:h.end], off: h.dataStart, order: order}
+		fde, err := parseFDE(entry, h, f, cieByOffset)
+		if err != nil {
+			return nil, err
 		}
+		f.FDEs = append(f.FDEs, fde)
+		f.Entries = append(f.Entries, fde.FrameEntry)
 	}
 
 	sort.Slice(f.FDEs, func(i, j int) bool {
@@ -745,7 +773,7 @@ func parseCIE(r *frameReader, h frameEntryHeader, f *Frame) (*CIE, error) {
 		}
 	}
 
-	cie.FrameEntry.CFIs, err = parseCFI(r, r.pos(), h.end, cie)
+	cie.FrameEntry.CFIs, err = parseCFI(r, h.end, cie, f)
 	if err != nil {
 		return nil, fmt.Errorf("CIE %#x CFI: %w", h.start, err)
 	}
@@ -768,10 +796,10 @@ func parseEHCAugmentation(r *frameReader, f *Frame, entryStart int, cie *CIE) er
 	}
 
 	augStart := r.pos()
-	augEnd := augStart + int(augLen)
-	if augEnd > len(r.data) {
-		return fmt.Errorf("CIE %#x augmentation extends past section", entryStart)
+	if augLen > uint64(r.remain()) {
+		return fmt.Errorf("CIE %#x augmentation extends past entry", entryStart)
 	}
+	augEnd := augStart + int(augLen)
 
 	for i := 0; i < len(cie.Augmentation); i++ {
 		switch cie.Augmentation[i] {
@@ -795,7 +823,7 @@ func parseEHCAugmentation(r *frameReader, f *Frame, entryStart int, cie *CIE) er
 			}
 			cie.PersonalityEncoding = &enc
 
-			value, err := r.encodedPointer(enc, f.SectionAddress+uint64(r.pos()), cie.AddressSize)
+			value, err := r.encodedPointerAddress(enc, f.SectionAddress+uint64(r.pos()), cie.AddressSize)
 			if err != nil {
 				return fmt.Errorf("CIE %#x: personality pointer: %w", entryStart, err)
 			}
@@ -829,6 +857,9 @@ func parseFDE(r *frameReader, h frameEntryHeader, f *Frame, cieByOffset map[int]
 	var cieOffset int
 	if f.EHFrame {
 		// The .eh_frame CIE pointer is relative to the CIE pointer field itself.
+		if h.id > uint64(h.bodyStart) {
+			return nil, fmt.Errorf("FDE %#x: CIE pointer precedes section", h.start)
+		}
 		cieOffset = h.bodyStart - int(h.id)
 	} else {
 		if h.id > uint64(^uint(0)>>1) {
@@ -864,13 +895,13 @@ func parseFDE(r *frameReader, h frameEntryHeader, f *Frame, cieByOffset map[int]
 			return nil, fmt.Errorf("FDE %#x augmentation length: %w", h.start, err)
 		}
 		augStart := r.pos()
-		augEnd := augStart + int(augLen)
-		if augEnd > h.end {
+		if augLen > uint64(r.remain()) {
 			return nil, fmt.Errorf("FDE %#x augmentation extends past entry", h.start)
 		}
+		augEnd := augStart + int(augLen)
 
 		if cie.LSDAPointerEncoding != frameEHPFixed {
-			value, err := r.encodedPointer(
+			value, err := r.encodedPointerAddress(
 				cie.LSDAPointerEncoding,
 				f.SectionAddress+uint64(r.pos()),
 				cie.AddressSize,
@@ -900,7 +931,7 @@ func parseFDE(r *frameReader, h frameEntryHeader, f *Frame, cieByOffset map[int]
 		LSDAAddress:     lsda,
 	}
 
-	cfis, err := parseCFI(r, r.pos(), h.end, cie)
+	cfis, err := parseCFI(r, h.end, cie, f)
 	if err != nil {
 		return nil, fmt.Errorf("FDE %#x CFI: %w", h.start, err)
 	}
@@ -909,6 +940,15 @@ func parseFDE(r *frameReader, h frameEntryHeader, f *Frame, cieByOffset map[int]
 }
 
 func (r *frameReader) encodedPointer(enc uint8, base uint64, addressSize uint8) (uint64, error) {
+	if enc != frameEHPFixed && enc&frameEHPIndirect != 0 {
+		return 0, errors.New("DW_EH_PE_indirect is not supported without a memory reader")
+	}
+	return r.encodedPointerAddress(enc, base, addressSize)
+}
+
+// encodedPointerAddress resolves the application bits while retaining the
+// address of an indirect pointer slot. The caller keeps the encoding with it.
+func (r *frameReader) encodedPointerAddress(enc uint8, base uint64, addressSize uint8) (uint64, error) {
 	if enc == frameEHPFixed {
 		return 0, errors.New("DW_EH_PE_omit")
 	}
@@ -936,9 +976,6 @@ func (r *frameReader) encodedPointer(enc uint8, base uint64, addressSize uint8) 
 		return 0, fmt.Errorf("unsupported DW_EH_PE application %#x", app)
 	}
 
-	if enc&frameEHPIndirect != 0 {
-		return 0, errors.New("DW_EH_PE_indirect is not supported without a memory reader")
-	}
 	return raw, nil
 }
 
@@ -973,12 +1010,9 @@ func (r *frameReader) encodedPointerRaw(format uint8, addressSize uint8) (uint64
 	}
 }
 
-func parseCFI(r *frameReader, start, end int, cie *CIE) ([]CFI, error) {
-	if start > end || end > len(r.data) {
+func parseCFI(r *frameReader, end int, cie *CIE, f *Frame) ([]CFI, error) {
+	if r.pos() > end || end > len(r.data) {
 		return nil, io.ErrUnexpectedEOF
-	}
-	if err := r.setPos(start); err != nil {
-		return nil, err
 	}
 
 	var out []CFI
@@ -1019,7 +1053,11 @@ func parseCFI(r *frameReader, start, end int, cie *CIE) ([]CFI, error) {
 
 			case frameCFASetLoc:
 				inst.Kind = CFISetLoc
-				v, err := r.addr(int(cie.AddressSize))
+				encoding := uint8(frameEHPAbsptr)
+				if f.EHFrame {
+					encoding = cie.FDEPointerEncoding
+				}
+				v, err := r.encodedPointer(encoding, f.SectionAddress+uint64(r.pos()), cie.AddressSize)
 				if err != nil {
 					return nil, err
 				}
@@ -1278,7 +1316,16 @@ func readBlock(r *frameReader) ([]byte, error) {
 	return r.bytes(int(n))
 }
 
+// UnwindTable executes architecture-independent call frame instructions.
+// Use UnwindTableForArch for architecture-specific instructions.
 func (fde *FDE) UnwindTable() (*UnwindTable, error) {
+	return fde.UnwindTableForArch(FrameArchUnknown)
+}
+
+// UnwindTableForArch executes call frame instructions for the selected
+// architecture. Currently only the AArch64 interpretation of opcode 0x2d is
+// supported; generic execution rejects that ambiguous opcode.
+func (fde *FDE) UnwindTableForArch(arch FrameArchitecture) (*UnwindTable, error) {
 	if fde == nil || fde.CIE == nil {
 		return nil, errors.New("FDE has no CIE")
 	}
@@ -1289,6 +1336,7 @@ func (fde *FDE) UnwindTable() (*UnwindTable, error) {
 		nil,
 		fde.InitialLocation,
 		true,
+		arch,
 	)
 	if err != nil {
 		return nil, err
@@ -1316,29 +1364,31 @@ func (fde *FDE) UnwindTable() (*UnwindTable, error) {
 		initial,
 		fde.InitialLocation,
 		false,
+		arch,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	// A CIE's PC is artificial. A FDE's rows are the actual address table.
-	if len(table.Rows) != 0 && table.Rows[0].PC < fde.InitialLocation {
-		table.Rows[0].PC = fde.InitialLocation
-	}
 	return table, nil
 }
 
 func (f *Frame) UnwindTables() (map[Offset]*UnwindTable, error) {
+	return f.UnwindTablesForArch(FrameArchUnknown)
+}
+
+// UnwindTablesForArch builds all unwind tables using the selected architecture.
+func (f *Frame) UnwindTablesForArch(arch FrameArchitecture) (map[Offset]*UnwindTable, error) {
 	out := make(map[Offset]*UnwindTable, len(f.FDEs)+len(f.CIEs))
 	for _, cie := range f.CIEs {
-		t, err := executeCFI(cie.CFIs, cie, nil, 0, true)
+		t, err := executeCFI(cie.CFIs, cie, nil, 0, true, arch)
 		if err != nil {
 			return nil, fmt.Errorf("CIE %#x: %w", cie.Offset, err)
 		}
 		out[cie.Offset] = t
 	}
 	for _, fde := range f.FDEs {
-		t, err := fde.UnwindTable()
+		t, err := fde.UnwindTableForArch(arch)
 		if err != nil {
 			return nil, fmt.Errorf("FDE %#x: %w", fde.Offset, err)
 		}
@@ -1361,7 +1411,10 @@ func cloneUnwindRow(row UnwindRow) UnwindRow {
 	return cp
 }
 
-func executeCFI(cfis []CFI, cie *CIE, initial *UnwindRow, startPC uint64, isCIE bool) (*UnwindTable, error) {
+func executeCFI(cfis []CFI, cie *CIE, initial *UnwindRow, startPC uint64, isCIE bool, arch FrameArchitecture) (*UnwindTable, error) {
+	if arch != FrameArchUnknown && arch != FrameArchAArch64 {
+		return nil, fmt.Errorf("unsupported frame architecture %d", arch)
+	}
 	row := UnwindRow{
 		PC:        startPC,
 		Registers: make(map[uint64]RegisterRule),
@@ -1391,44 +1444,52 @@ func executeCFI(cfis []CFI, cie *CIE, initial *UnwindRow, startPC uint64, isCIE 
 		table = append(table, cloneUnwindRow(row))
 	}
 
-	var codeAlign = int64(cie.CodeAlignmentFactor)
+	var codeAlign = cie.CodeAlignmentFactor
 	var dataAlign = cie.DataAlignmentFactor
 
 	for _, ins := range cfis {
 		switch ins.Kind {
 		case CFINop:
 		case CFISetLoc:
+			nextPC := uint64(ins.Args[0])
+			if nextPC <= row.PC {
+				return nil, fmt.Errorf("DW_CFA_set_loc address %#x must be greater than %#x", nextPC, row.PC)
+			}
 			appendRow()
-			row.PC = uint64(ins.Args[0])
+			row.PC = nextPC
 
-		case CFIAdvanceLoc:
+		case CFIAdvanceLoc, CFIAdvanceLoc1, CFIAdvanceLoc2, CFIAdvanceLoc4, CFIMIPSAdvanceLoc8:
+			delta := uint64(ins.Args[0])
+			if codeAlign != 0 && delta > (math.MaxUint64-row.PC)/codeAlign {
+				return nil, fmt.Errorf("%s at %#x overflows the row address", ins.Kind, ins.Offset)
+			}
 			appendRow()
-			row.PC += uint64(int64(ins.Args[0]) * codeAlign)
-
-		case CFIAdvanceLoc1, CFIAdvanceLoc2, CFIAdvanceLoc4, CFIMIPSAdvanceLoc8:
-			appendRow()
-			row.PC += uint64(ins.Args[0] * codeAlign)
+			row.PC += delta * codeAlign
 
 		case CFIDefCFA:
-			row.CFA = CFARule{Reg: uint64(ins.Args[0]), Offset: ins.Args[1]}
+			row.CFA = CFARule{Defined: true, Reg: uint64(ins.Args[0]), Offset: ins.Args[1]}
 
 		case CFIDefCFASF:
-			row.CFA = CFARule{Reg: uint64(ins.Args[0]), Offset: ins.Args[1] * dataAlign}
+			row.CFA = CFARule{Defined: true, Reg: uint64(ins.Args[0]), Offset: ins.Args[1] * dataAlign}
 
 		case CFIDefCFARegister:
+			row.CFA.Defined = true
 			row.CFA.Reg = uint64(ins.Args[0])
 			row.CFA.Expression = false
 
 		case CFIDefCFAOffset:
+			row.CFA.Defined = true
 			row.CFA.Offset = ins.Args[0]
 			row.CFA.Expression = false
 
 		case CFIDefCFAOffsetSF:
+			row.CFA.Defined = true
 			row.CFA.Offset = ins.Args[0] * dataAlign
 			row.CFA.Expression = false
 
 		case CFIDefCFAExpression:
 			row.CFA = CFARule{
+				Defined:    true,
 				Expr:       append([]byte(nil), ins.Expression...),
 				Expression: true,
 			}
@@ -1522,8 +1583,9 @@ func executeCFI(cfis []CFI, cie *CIE, initial *UnwindRow, startPC uint64, isCIE 
 			}
 
 		case CFIGNUWindowSave:
-			// DW_CFA_GNU_window_save has no operands. On AArch64, opcode 0x2d
-			// is DW_CFA_AARCH64_negate_ra_state.
+			if arch != FrameArchAArch64 {
+				return nil, errors.New("CFI opcode 0x2d requires an explicit supported architecture")
+			}
 			row.RAStateNegated = !row.RAStateNegated
 
 		default:
@@ -1532,7 +1594,7 @@ func executeCFI(cfis []CFI, cie *CIE, initial *UnwindRow, startPC uint64, isCIE 
 	}
 
 	// LLVM does not append an entirely empty row.
-	if row.CFA.Expression || row.CFA.Reg != 0 || row.CFA.Offset != 0 || len(row.Registers) != 0 {
+	if row.CFA.Defined || len(row.Registers) != 0 || row.RAStateNegated || row.ArgsSize != 0 {
 		table = append(table, cloneUnwindRow(row))
 	}
 
