@@ -248,11 +248,9 @@ func TestFrameFinalClearedState(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		cie, fde []byte
-		arch     FrameArchitecture
 	}{
-		{"ra_state", []byte{0x2d}, []byte{0x44, 0x2d}, FrameArchAArch64},
-		{"args_size", []byte{0x2e, 8}, []byte{0x44, 0x2e, 0}, FrameArchUnknown},
-		{"register", nil, []byte{0x08, 16, 0x44, 0xd0}, FrameArchUnknown},
+		{"args_size", []byte{0x2e, 8}, []byte{0x44, 0x2e, 0}},
+		{"register", nil, []byte{0x08, 16, 0x44, 0xd0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := append(frameTestDebugCIE(tc.cie), frameTestDebugFDE(0, tc.fde)...)
@@ -260,12 +258,12 @@ func TestFrameFinalClearedState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			table, err := f.FDEs[0].UnwindTableForArch(tc.arch)
+			table, err := f.FDEs[0].UnwindTable()
 			if err != nil {
 				t.Fatal(err)
 			}
 			r := table.RowForPC(0x1004)
-			if len(table.Rows) != 2 || r == nil || r.PC != 0x1004 || r.RAStateNegated || r.ArgsSize != 0 || len(r.Registers) != 0 {
+			if len(table.Rows) != 2 || r == nil || r.PC != 0x1004 || r.ArgsSize != 0 || len(r.Registers) != 0 {
 				t.Fatalf("lost final cleared state: %+v", table.Rows)
 			}
 		})

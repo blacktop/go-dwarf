@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // A Type conventionally represents a pointer to any of the
@@ -329,19 +330,20 @@ type EnumValue struct {
 }
 
 func (t *EnumType) String() string {
-	s := "enum"
+	var s strings.Builder
+	s.WriteString("enum")
 	if t.EnumName != "" {
-		s += " " + t.EnumName
+		s.WriteString(" " + t.EnumName)
 	}
-	s += " {"
+	s.WriteString(" {")
 	for i, v := range t.Val {
 		if i > 0 {
-			s += ",\n"
+			s.WriteString(",\n")
 		}
-		s += v.Name + "=" + strconv.FormatInt(v.Val, 10)
+		s.WriteString(v.Name + "=" + strconv.FormatInt(v.Val, 10))
 	}
-	s += "}"
-	return s
+	s.WriteString("}")
+	return s.String()
 }
 
 // A FuncType represents a function type.
@@ -360,20 +362,20 @@ type FuncType struct {
 }
 
 func (t *FuncType) String() string {
-	var s string
+	var s strings.Builder
 	if t.ReturnType != nil {
-		s += " " + t.ReturnType.String() + " "
+		s.WriteString(" " + t.ReturnType.String() + " ")
 	}
-	s += t.Name + "("
+	s.WriteString(t.Name + "(")
 	for i, t := range t.ParamType {
 		if i > 0 {
-			s += ", "
+			s.WriteString(", ")
 		}
-		s += t.String()
+		s.WriteString(t.String())
 	}
-	s += ");"
+	s.WriteString(");")
 
-	return s
+	return s.String()
 }
 
 // A NamespaceType represents a namespace type.
