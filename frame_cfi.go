@@ -269,8 +269,9 @@ type FDE struct {
 	CIE             *CIE
 	InitialLocation uint64
 	AddressRange    uint64
-	// LSDAAddress is the decoded pointer address. When CIE.LSDAPointerEncoding
-	// has DW_EH_PE_indirect (0x80) set, this is the address of the pointer slot.
+	// LSDAAddress is nil for an omitted or encoded-null LSDA. Otherwise it is
+	// the decoded pointer address. When CIE.LSDAPointerEncoding has
+	// DW_EH_PE_indirect (0x80) set, this is the address of the pointer slot.
 	LSDAAddress *uint64
 }
 
@@ -901,15 +902,20 @@ func parseFDE(r *frameReader, h frameEntryHeader, f *Frame, cieByOffset map[int]
 		augEnd := augStart + int(augLen)
 
 		if cie.LSDAPointerEncoding != frameEHPFixed {
-			value, err := r.encodedPointerAddress(
-				cie.LSDAPointerEncoding,
-				f.SectionAddress+uint64(r.pos()),
-				cie.AddressSize,
-			)
+			base := f.SectionAddress + uint64(r.pos())
+			raw, err := r.encodedPointerRaw(cie.LSDAPointerEncoding&0x0f, cie.AddressSize)
 			if err != nil {
 				return nil, fmt.Errorf("FDE %#x LSDA: %w", h.start, err)
 			}
-			lsda = &value
+			// A raw zero means that this FDE has no LSDA, even when its CIE
+			// advertises a relative or indirect LSDA encoding.
+			if raw != 0 {
+				value, err := framePointerAddress(raw, cie.LSDAPointerEncoding, base)
+				if err != nil {
+					return nil, fmt.Errorf("FDE %#x LSDA: %w", h.start, err)
+				}
+				lsda = &value
+			}
 		}
 
 		if r.pos() != augEnd {
@@ -957,7 +963,12 @@ func (r *frameReader) encodedPointerAddress(enc uint8, base uint64, addressSize 
 	if err != nil {
 		return 0, err
 	}
+	return framePointerAddress(raw, enc, base)
+}
 
+// framePointerAddress applies the relative-address modifier to a value that
+// has already been decoded. It leaves indirect pointers at their slot address.
+func framePointerAddress(raw uint64, enc uint8, base uint64) (uint64, error) {
 	app := enc & 0x70
 	switch app {
 	case frameEHPAbsptr:
@@ -1593,8 +1604,9 @@ func executeCFI(cfis []CFI, cie *CIE, initial *UnwindRow, startPC uint64, isCIE 
 		}
 	}
 
-	// LLVM does not append an entirely empty row.
-	if row.CFA.Defined || len(row.Registers) != 0 || row.RAStateNegated || row.ArgsSize != 0 {
+	// Once a row has been emitted, its successor must be kept even if all
+	// rules or extension state were cleared. Otherwise lookup returns stale state.
+	if len(table) != 0 || row.CFA.Defined || len(row.Registers) != 0 || row.RAStateNegated || row.ArgsSize != 0 {
 		table = append(table, cloneUnwindRow(row))
 	}
 

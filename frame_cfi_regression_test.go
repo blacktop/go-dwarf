@@ -78,6 +78,34 @@ func TestFrameIndirectPointers(t *testing.T) {
 	}
 }
 
+func TestFrameNullLSDA(t *testing.T) {
+	const sectionAddress = uint64(0x100000000)
+	for _, tc := range []struct {
+		name     string
+		encoding byte
+	}{
+		{"direct", 0x1b},
+		{"indirect", 0x9b},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cie := append(frameTestU32(nil, 0), 1, 'z', 'L', 'R', 0, 1, 0x78, 16, 2, tc.encoding, 0x1b, 0x0c, 7, 8)
+			data := frameTestEntry(cie)
+			initialLocation := sectionAddress + uint64(len(data)+8)
+			fde := frameTestU32(nil, uint32(len(data)+4))
+			fde = frameTestU32(fde, 0) // A code address still applies its relative base.
+			fde = frameTestU32(fde, 0x20)
+			fde = append(fde, 4, 0, 0, 0, 0) // Encoded-null LSDA.
+			f, err := ParseFrame(append(data, frameTestEntry(fde)...), binary.LittleEndian, 8, sectionAddress, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(f.FDEs) != 1 || f.FDEs[0].LSDAAddress != nil || f.FDEs[0].InitialLocation != initialLocation {
+				t.Fatalf("incorrect nullable-pointer decoding: %+v", f.FDEs)
+			}
+		})
+	}
+}
+
 func TestFrameEHSetLocEncoding(t *testing.T) {
 	const sectionAddress = uint64(0x100000000)
 	data := append([]byte(nil), ehFrame[:0x14]...)
@@ -213,6 +241,34 @@ func TestFrameArchitectureSelection(t *testing.T) {
 	first, second := table.RowForPC(0x1000), table.RowForPC(0x1004)
 	if first == nil || second == nil || !first.RAStateNegated || second.RAStateNegated {
 		t.Fatalf("wrong AArch64 return-address state: %+v", table.Rows)
+	}
+}
+
+func TestFrameFinalClearedState(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		cie, fde []byte
+		arch     FrameArchitecture
+	}{
+		{"ra_state", []byte{0x2d}, []byte{0x44, 0x2d}, FrameArchAArch64},
+		{"args_size", []byte{0x2e, 8}, []byte{0x44, 0x2e, 0}, FrameArchUnknown},
+		{"register", nil, []byte{0x08, 16, 0x44, 0xd0}, FrameArchUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := append(frameTestDebugCIE(tc.cie), frameTestDebugFDE(0, tc.fde)...)
+			f, err := ParseFrame(data, binary.LittleEndian, 8, 0, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			table, err := f.FDEs[0].UnwindTableForArch(tc.arch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := table.RowForPC(0x1004)
+			if len(table.Rows) != 2 || r == nil || r.PC != 0x1004 || r.RAStateNegated || r.ArgsSize != 0 || len(r.Registers) != 0 {
+				t.Fatalf("lost final cleared state: %+v", table.Rows)
+			}
+		})
 	}
 }
 
